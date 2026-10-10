@@ -1,0 +1,162 @@
+// Data layer. Same API for Firebase and for the local "demo mode".
+//
+// Firestore layout (everything lives under the signed-in family account):
+//   families/{uid}/meta/settings      -> family name, currency, the two people
+//   families/{uid}/budgets/{year}     -> yearly income per person + category percentages
+//   families/{uid}/expenses/{id}      -> one document per expense
+
+import { firebaseConfig } from "../firebase-config.js";
+
+const FIREBASE_VERSION = "10.12.2";
+
+const isConfigured =
+  firebaseConfig &&
+  typeof firebaseConfig.apiKey === "string" &&
+  firebaseConfig.apiKey.length > 0 &&
+  !firebaseConfig.apiKey.startsWith("YOUR_") &&
+  !String(firebaseConfig.projectId || "").startsWith("YOUR_");
+
+export async function createDb() {
+  return isConfigured ? createFirebaseDb() : createLocalDb();
+}
+
+/* ------------------------------------------------------------------ */
+/* Firebase                                                            */
+/* ------------------------------------------------------------------ */
+async function createFirebaseDb() {
+  const base = `https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}`;
+  const [appMod, authMod, fs] = await Promise.all([
+    import(`${base}/firebase-app.js`),
+    import(`${base}/firebase-auth.js`),
+    import(`${base}/firebase-firestore.js`),
+  ]);
+
+  const app = appMod.initializeApp(firebaseConfig);
+  const auth = authMod.getAuth(app);
+
+  let db;
+  try {
+    // Keeps working offline and syncs when the connection comes back.
+    db = fs.initializeFirestore(app, { localCache: fs.persistentLocalCache() });
+  } catch (err) {
+    db = fs.getFirestore(app);
+  }
+
+  let uid = null;
+  const settingsRef = () => fs.doc(db, "families", uid, "meta", "settings");
+  const budgetsCol = () => fs.collection(db, "families", uid, "budgets");
+  const expensesCol = () => fs.collection(db, "families", uid, "expenses");
+
+  return {
+    mode: "firebase",
+
+    onAuth(cb) {
+      return authMod.onAuthStateChanged(auth, (user) => {
+        uid = user ? user.uid : null;
+        cb(user ? { email: user.email } : null);
+      });
+    },
+    signIn: (email, password) => authMod.signInWithEmailAndPassword(auth, email, password),
+    signUp: (email, password) => authMod.createUserWithEmailAndPassword(auth, email, password),
+    resetPassword: (email) => authMod.sendPasswordResetEmail(auth, email),
+    signOut: () => authMod.signOut(auth),
+
+    subscribe({ settings, budgets, expenses, error }) {
+      const onErr = (e) => error && error(e);
+      const u1 = fs.onSnapshot(settingsRef(), (snap) => settings(snap.exists() ? snap.data() : null), onErr);
+      const u2 = fs.onSnapshot(
+        budgetsCol(),
+        (qs) => budgets(Object.fromEntries(qs.docs.map((d) => [d.id, d.data()]))),
+        onErr
+      );
+      const u3 = fs.onSnapshot(
+        expensesCol(),
+        (qs) => expenses(qs.docs.map((d) => ({ id: d.id, ...d.data() }))),
+        onErr
+      );
+      return () => {
+        u1();
+        u2();
+        u3();
+      };
+    },
+
+    saveSettings: (s) => fs.setDoc(settingsRef(), s),
+    saveBudget: (year, b) => fs.setDoc(fs.doc(budgetsCol(), String(year)), b),
+    addExpense: (e) => fs.addDoc(expensesCol(), { ...e, createdAt: fs.serverTimestamp() }),
+    updateExpense: (id, e) => fs.setDoc(fs.doc(expensesCol(), id), e, { merge: true }),
+    deleteExpense: (id) => fs.deleteDoc(fs.doc(expensesCol(), id)),
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* Local demo mode (localStorage)                                      */
+/* ------------------------------------------------------------------ */
+function createLocalDb() {
+  const KEY = "piggynest:demo:v1";
+  const load = () => {
+    try {
+      return JSON.parse(localStorage.getItem(KEY)) || {};
+    } catch (e) {
+      return {};
+    }
+  };
+  const data = { settings: null, budgets: {}, expenses: [], ...load() };
+  const subs = new Set();
+  const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+
+  const persist = () => {
+    try {
+      localStorage.setItem(KEY, JSON.stringify(data));
+    } catch (e) {
+      /* storage full or blocked: keep working in memory */
+    }
+    subs.forEach((notify) => notify());
+  };
+
+  return {
+    mode: "local",
+
+    onAuth(cb) {
+      setTimeout(() => cb({ email: "demo" }), 0);
+      return () => {};
+    },
+    async signIn() {},
+    async signUp() {},
+    async resetPassword() {},
+    async signOut() {},
+
+    subscribe({ settings, budgets, expenses }) {
+      const notify = () => {
+        settings(data.settings);
+        budgets({ ...data.budgets });
+        expenses(data.expenses.map((e) => ({ ...e })));
+      };
+      subs.add(notify);
+      queueMicrotask(notify);
+      return () => subs.delete(notify);
+    },
+
+    async saveSettings(s) {
+      data.settings = s;
+      persist();
+    },
+    async saveBudget(year, b) {
+      data.budgets[String(year)] = b;
+      persist();
+    },
+    async addExpense(e) {
+      data.expenses.push({ ...e, id: newId() });
+      persist();
+    },
+    async updateExpense(id, e) {
+      const i = data.expenses.findIndex((x) => x.id === id);
+      if (i >= 0) data.expenses[i] = { ...data.expenses[i], ...e };
+      persist();
+    },
+    async deleteExpense(id) {
+      data.expenses = data.expenses.filter((x) => x.id !== id);
+      persist();
+    },
+  };
+}
