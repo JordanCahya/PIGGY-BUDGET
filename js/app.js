@@ -437,7 +437,7 @@ function expensesHtml() {
           <fieldset class="who">
             <legend>Paid by</legend>
             ${PERSON_KEYS.map((k, i) => `<label class="who-pill"><input type="radio" name="paidBy" value="${k}" ${k === state.lastPaidBy ? "checked" : ""}><span>${esc(s.persons[i].emoji)} ${esc(s.persons[i].name)}</span></label>`).join("")}
-            <label class="who-pill"><input type="radio" name="paidBy" value="both" ${state.lastPaidBy === "both" ? "checked" : ""}><span>💞 Together · 50:50</span></label>
+            <label class="who-pill"><input type="radio" name="paidBy" value="both" ${state.lastPaidBy === "both" ? "checked" : ""}><span>💞 Together</span></label>
           </fieldset>
           <label>Note <small>(optional)</small><input type="text" name="note" maxlength="80" placeholder="e.g. weekly groceries"></label>
           <div class="form-actions">
@@ -491,7 +491,7 @@ function updateExpenseList() {
           <div class="exp-emoji">${esc(cat?.emoji || "✨")}</div>
           <div class="exp-main"><b>${esc(e.note || cat?.name || "Other")}</b><small>${Number(e.date.slice(8, 10))} ${MONTHS[state.month]} · ${esc(cat?.name || "Other")}</small></div>
           ${e.paidBy === "both"
-            ? `<span class="chip who-both">💞 Together · 50:50</span>`
+            ? `<span class="chip who-both">💞 Together</span>`
             : `<span class="chip who-${PERSON_KEYS[pi]}">${esc(s.persons[pi].emoji)} ${esc(s.persons[pi].name)}</span>`}
           <b class="exp-amt">${fmt(e.amount)}</b>
           <div class="row-actions">
