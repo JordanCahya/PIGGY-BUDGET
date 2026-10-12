@@ -393,3 +393,6 @@ dialog { max-height: 90vh; overflow: auto; }
   .budget-actions .btn { flex: 1 1 140px; }
   .budget-actions .spacer { display: none; }
 }
+
+/* shared (50:50) expenses */
+.chip.who-both { background: linear-gradient(90deg, #ffe3ec 50%, #e1f0ff 50%); }
