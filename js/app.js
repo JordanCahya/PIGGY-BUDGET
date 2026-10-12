@@ -37,6 +37,8 @@ const state = {
   settings: null,
   budgets: {},
   expenses: [],
+  investments: [],
+  invId: null,
   loaded: { settings: false, budgets: false, expenses: false },
   tab: "home",
   year: now.getFullYear(),
@@ -197,6 +199,7 @@ const TABS = [
   ["home", "🏡", "Home"],
   ["expenses", "🧾", "Expenses"],
   ["budget", "🎯", "Budget"],
+  ["invest", "📈", "Invest"],
   ["year", "📅", "Year"],
 ];
 
@@ -258,7 +261,7 @@ function autosize(t) {
 function renderView() {
   const v = $("#view");
   if (!v) return;
-  const builders = { home: homeHtml, expenses: expensesHtml, budget: budgetHtml, year: yearHtml };
+  const builders = { home: homeHtml, expenses: expensesHtml, budget: budgetHtml, invest: investHtml, year: yearHtml };
   v.innerHTML = builders[state.tab]();
   if (state.tab === "expenses") {
     initExpenseForm();
@@ -795,6 +798,424 @@ function yearHtml() {
 }
 
 /* ================================================================== */
+/* Investments                                                         */
+/* ================================================================== */
+const INV_TYPES = [
+  ["stocks", "📈", "Stocks / ETF"],
+  ["fund", "🏦", "Mutual fund"],
+  ["gold", "🪙", "Gold"],
+  ["crypto", "₿", "Crypto"],
+  ["bonds", "📜", "Bonds"],
+  ["deposit", "🏧", "Deposit"],
+  ["property", "🏡", "Property"],
+  ["other", "🌱", "Other"],
+];
+const typeInfo = (k) => INV_TYPES.find((t) => t[0] === k) || INV_TYPES[INV_TYPES.length - 1];
+const typeColor = (k) => PALETTE[Math.max(0, INV_TYPES.findIndex((t) => t[0] === k)) % PALETTE.length];
+const KIND_LABEL = { add: "➕ Added money", withdraw: "➖ Withdrew money", value: "🏷️ Value update" };
+const KIND_ORDER = { add: 0, withdraw: 0, value: 1 };
+const todayYmd = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+const closeDlg = () => $("#settingsDialog").close();
+const ownerShares = (o) => (o === "both" ? { p1: 0.5, p2: 0.5 } : o === "p2" ? { p1: 0, p2: 1 } : { p1: 1, p2: 0 });
+function ownerLabel(o) {
+  if (o === "both") return "💞 Together";
+  const p = settings().persons[o === "p2" ? 1 : 0];
+  return `${p.emoji} ${p.name}`;
+}
+const fmtPct = (x) => `${x >= 0 ? "+" : "−"}${Math.abs(x * 100).toFixed(1)}%`;
+
+function gainChip(gain, ret) {
+  if (Math.abs(gain) < 0.005) return `<span class="chip">No change yet</span>`;
+  const up = gain > 0;
+  return `<span class="chip ${up ? "gain-pos" : "gain-neg"}">${up ? "▲" : "▼"} ${fmt(Math.abs(gain))}${ret != null ? ` · ${fmtPct(ret)}` : ""}</span>`;
+}
+
+const sortedEntries = (inv) =>
+  [...(inv.entries || [])].sort((a, b) => (a.date || "").localeCompare(b.date || "") || KIND_ORDER[a.kind] - KIND_ORDER[b.kind]);
+
+// Replay the history: adding money raises the value, withdrawing lowers it, a "value update" resets it.
+function invReplay(inv, untilYmd) {
+  let value = 0, put = 0, out = 0;
+  for (const e of sortedEntries(inv)) {
+    if (untilYmd && e.date > untilYmd) break;
+    const a = Number(e.amount) || 0;
+    if (e.kind === "add") { value += a; put += a; }
+    else if (e.kind === "withdraw") { value -= a; out += a; }
+    else if (e.kind === "value") value = a;
+  }
+  const net = put - out;
+  return { value, put, out, net, gain: value - net };
+}
+
+function portfolio() {
+  const t = { value: 0, put: 0, out: 0, gain: 0, byType: {}, rows: [], people: { p1: { value: 0, net: 0, gain: 0 }, p2: { value: 0, net: 0, gain: 0 } } };
+  for (const inv of state.investments) {
+    const r = invReplay(inv);
+    t.value += r.value; t.put += r.put; t.out += r.out; t.gain += r.gain;
+    t.byType[inv.type] = (t.byType[inv.type] || 0) + Math.max(0, r.value);
+    const sh = ownerShares(inv.owner);
+    for (const k of PERSON_KEYS) {
+      t.people[k].value += r.value * sh[k];
+      t.people[k].net += r.net * sh[k];
+      t.people[k].gain += r.gain * sh[k];
+    }
+    t.rows.push({ inv, ...r });
+  }
+  t.net = t.put - t.out;
+  t.ret = t.put > 0 ? t.gain / t.put : null;
+  return t;
+}
+
+// Budget category that funds investing (chosen in the Invest tab, or guessed from the name).
+function investCategory() {
+  const cats = budgetFor(state.year).b.categories;
+  const stored = settings().investCategoryId;
+  if (stored === "none") return null;
+  return cats.find((c) => c.id === stored) || cats.find((c) => /sav|invest|tabung/i.test(c.name)) || null;
+}
+
+function investHtml() {
+  const s = settings();
+  const header = `<div class="section-title"><h2>Investments 📈</h2><button class="btn btn-primary" data-act="inv-new">＋ Add investment</button></div>`;
+  if (!state.investments.length) {
+    return `${header}
+      <section class="card"><div class="empty">🌱
+        <p>No investments yet.<br>Track gold, stocks, funds, deposits and more, and watch your savings grow together.</p>
+        <div><button class="btn btn-primary" data-act="inv-new">Add your first investment</button></div>
+      </div></section>`;
+  }
+
+  const P = portfolio();
+  const { b } = budgetFor(state.year);
+  const c = calc(b);
+  const link = investCategory();
+  const linkCalc = link ? c.cats.find((x) => x.id === link.id) : null;
+  const thisYear = state.year === now.getFullYear();
+  const mPrefix = `${state.year}-${pad(now.getMonth() + 1)}`;
+  let contribYear = 0, contribMonth = 0;
+  for (const inv of state.investments) {
+    for (const e of inv.entries || []) {
+      if (e.kind !== "add" || !(e.date || "").startsWith(`${state.year}-`)) continue;
+      contribYear += Number(e.amount) || 0;
+      if (e.date.startsWith(mPrefix)) contribMonth += Number(e.amount) || 0;
+    }
+  }
+
+  // allocation donut
+  const types = Object.entries(P.byType).filter(([, v]) => v > 0).sort((a, b2) => b2[1] - a[1]);
+  const allocTotal = types.reduce((a, [, v]) => a + v, 0);
+  let st = 0;
+  const stops = types.map(([k, v]) => {
+    const end = st + (v / allocTotal) * 100;
+    const seg = `${typeColor(k)} ${st}% ${end}%`;
+    st = end;
+    return seg;
+  });
+  const donutBg = stops.length ? `conic-gradient(${stops.join(", ")})` : "#f7eaf0";
+  const legend = types.length
+    ? types.map(([k, v]) => `<div><i style="background:${typeColor(k)}"></i><span>${typeInfo(k)[1]} ${esc(typeInfo(k)[2])}</span><b>${Math.round((v / allocTotal) * 100)}%</b></div>`).join("")
+    : `<small>Add a current value to see your mix.</small>`;
+
+  // people
+  const people = PERSON_KEYS.map((k, i) => {
+    const p = s.persons[i];
+    const x = P.people[k];
+    return `
+      <article class="card person">
+        <div class="person-head"><div class="avatar ${k}">${esc(p.emoji)}</div><div><h3>${esc(p.name)}</h3><small>Together investments count half each</small></div></div>
+        <div class="stat-row"><span>Worth now</span><b>${fmt(x.value)}</b></div>
+        <div class="stat-row"><span>Money invested</span><b>${fmt(x.net)}</b></div>
+        <div class="stat-row"><span>Gain / loss</span><b class="${x.gain < 0 ? "neg" : x.gain > 0 ? "pos" : ""}">${x.gain > 0 ? "+" : x.gain < 0 ? "−" : ""}${fmt(Math.abs(x.gain))}</b></div>
+      </article>`;
+  }).join("");
+
+  // month-end chart for the selected year
+  const today = todayYmd();
+  const pts = Array.from({ length: 12 }, (_, i) => {
+    if (`${state.year}-${pad(i + 1)}-01` > today) return null;
+    const end = `${state.year}-${pad(i + 1)}-31`;
+    const until = end > today ? today : end;
+    return state.investments.reduce((a, inv) => a + invReplay(inv, until).value, 0);
+  });
+  const maxV = Math.max(1, ...pts.map((v) => v || 0)) * 1.15;
+  const bars = pts.map((v) => `<div class="bar-col static">${v != null ? `<div class="bar" style="height:${(Math.max(0, v) / maxV) * 100}%"></div>` : ""}</div>`).join("");
+  const labels = pts.map((v, i) => `<span>${MONTHS[i]}<br><small>${v != null ? compact(v) : ""}</small></span>`).join("");
+
+  // holdings
+  const cards = P.rows.sort((a, b2) => b2.value - a.value).map((r) => {
+    const inv = r.inv;
+    const [, emoji, tname] = typeInfo(inv.type);
+    const ret = r.put > 0 ? r.gain / r.put : null;
+    return `
+      <article class="card inv-card" style="--c:${typeColor(inv.type)}">
+        <div class="cat-top">
+          <div class="cat-emoji">${emoji}</div>
+          <div class="cat-name"><b>${esc(inv.name)}</b><small>${esc(tname)} · ${esc(ownerLabel(inv.owner))}</small></div>
+        </div>
+        <div class="inv-value">${fmt(r.value)}</div>
+        <div class="cat-amounts"><span>Invested <b>${fmt(r.net)}</b></span>${gainChip(r.gain, ret)}</div>
+        ${inv.note ? `<small class="inv-note">${esc(inv.note)}</small>` : ""}
+        <div class="inv-actions">
+          <button class="btn btn-soft" data-act="inv-open" data-id="${esc(inv.id)}" data-kind="add">＋ Money</button>
+          <button class="btn btn-soft" data-act="inv-open" data-id="${esc(inv.id)}" data-kind="value">🏷️ Value</button>
+          <button class="btn btn-ghost" data-act="inv-open" data-id="${esc(inv.id)}" data-kind="add">Details</button>
+        </div>
+      </article>`;
+  }).join("");
+
+  return `
+    ${header}
+    <section class="stats">
+      <div class="card stat"><small>Worth now</small><b>${fmt(P.value)}</b></div>
+      <div class="card stat"><small>Money invested</small><b>${fmt(P.net)}</b></div>
+      <div class="card stat"><small>Gain / loss</small><b class="${P.gain < 0 ? "neg" : P.gain > 0 ? "pos" : ""}">${P.gain > 0 ? "+" : P.gain < 0 ? "−" : ""}${fmt(Math.abs(P.gain))}</b></div>
+      <div class="card stat"><small>Return</small><b class="${P.ret != null && P.ret < 0 ? "neg" : P.ret > 0 ? "pos" : ""}">${P.ret == null ? "–" : fmtPct(P.ret)}</b></div>
+    </section>
+    <section class="grid-2">
+      <div class="card">
+        <h2>Mix</h2>
+        <div class="alloc">
+          <div class="donut" style="background:${donutBg}"><div class="donut-label"><span>${state.investments.length}</span><small>${state.investments.length === 1 ? "holding" : "holdings"}</small></div></div>
+          <div class="legend">${legend}</div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Savings plan ${state.year}</h2>
+        <small>Choose the budget category that funds your investing.</small>
+        <label style="margin-top:10px">Funded from
+          <select id="invCat">
+            <option value="none">Not linked</option>
+            ${b.categories.map((x) => `<option value="${esc(x.id)}" ${link && link.id === x.id ? "selected" : ""}>${esc(x.emoji)} ${esc(x.name)}</option>`).join("")}
+          </select>
+        </label>
+        ${linkCalc
+          ? `<div class="plan-line">
+              <div class="cat-amounts"><span><b>${fmt(contribYear)}</b> put in during ${state.year}</span><span>of ${fmt(linkCalc.yearly)} planned</span></div>
+              <div class="meter"><i style="width:${linkCalc.yearly > 0 ? Math.min(100, (contribYear / linkCalc.yearly) * 100) : 0}%"></i></div>
+              <small>${fmt(linkCalc.monthly)} per month${thisYear ? ` · ${fmt(contribMonth)} this month` : ""}</small>
+            </div>`
+          : `<p class="plan-line"><small>Link a category to compare your investing with your yearly budget.</small></p>`}
+      </div>
+    </section>
+    <section class="grid-2 people">${people}</section>
+    <section class="card">
+      <div class="list-head"><h2>Worth at month-end · ${state.year}</h2></div>
+      <div class="chart"><div class="chart-plot">${bars}</div><div class="chart-labels">${labels}</div></div>
+    </section>
+    <div class="section-title"><h2>Holdings</h2><small>Update the value now and then to track growth</small></div>
+    <section class="grid">${cards}</section>`;
+}
+
+const needDbUpdate = () => {
+  if (state.db.addInvestment) return false;
+  toast("Please also upload the new js/db.js file.");
+  return true;
+};
+
+function openInvForm(id) {
+  const s = settings();
+  const inv = id ? state.investments.find((i) => i.id === id) : null;
+  const dlg = $("#settingsDialog");
+  dlg.innerHTML = `
+    <form id="invForm" class="dlg-body" data-id="${esc(id || "")}">
+      <h2>${inv ? "Edit investment" : "New investment"}</h2>
+      <label>Name<input name="name" maxlength="40" required value="${esc(inv?.name || "")}" placeholder="e.g. Gold savings"></label>
+      <label>Type
+        <select name="type">${INV_TYPES.map((t) => `<option value="${t[0]}" ${inv?.type === t[0] ? "selected" : ""}>${t[1]} ${esc(t[2])}</option>`).join("")}</select>
+      </label>
+      <label>Owner
+        <select name="owner">
+          <option value="p1" ${inv?.owner === "p1" ? "selected" : ""}>${esc(s.persons[0].emoji)} ${esc(s.persons[0].name)}</option>
+          <option value="p2" ${inv?.owner === "p2" ? "selected" : ""}>${esc(s.persons[1].emoji)} ${esc(s.persons[1].name)}</option>
+          <option value="both" ${!inv || inv.owner === "both" ? "selected" : ""}>💞 Together</option>
+        </select>
+      </label>
+      ${inv ? "" : `
+        <label>Money put in so far <small>(optional)</small><input type="number" name="put" min="0" step="any" inputmode="decimal" placeholder="0"></label>
+        <label>Worth right now <small>(optional)</small><input type="number" name="worth" min="0" step="any" inputmode="decimal" placeholder="0"></label>
+        <label>As of<input type="date" name="date" value="${todayYmd()}"></label>`}
+      <label>Note <small>(optional)</small><input name="note" maxlength="80" value="${esc(inv?.note || "")}" placeholder="e.g. bought at the bank"></label>
+      <div class="dlg-actions">
+        ${inv ? `<button type="button" class="btn btn-ghost" data-act="inv-open" data-id="${esc(id)}" data-kind="add">Cancel</button>` : `<button type="button" class="btn btn-ghost" data-act="close-settings">Cancel</button>`}
+        <button class="btn btn-primary" type="submit">Save</button>
+      </div>
+    </form>`;
+  if (!dlg.open) dlg.showModal();
+}
+
+async function submitInvForm(form) {
+  if (needDbUpdate()) return;
+  const fd = new FormData(form);
+  const id = form.dataset.id;
+  const base = {
+    name: String(fd.get("name") || "").trim(),
+    type: String(fd.get("type") || "other"),
+    owner: ["p1", "p2", "both"].includes(fd.get("owner")) ? fd.get("owner") : "both",
+    note: String(fd.get("note") || "").trim(),
+  };
+  if (!base.name) { toast("Give it a name."); return; }
+  try {
+    if (id) {
+      const inv = state.investments.find((i) => i.id === id);
+      await state.db.saveInvestment(id, { ...base, entries: inv?.entries || [] });
+      toast("Saved");
+      renderInvDialog(id);
+      return;
+    }
+    const date = String(fd.get("date") || todayYmd());
+    const put = Number(fd.get("put")) || 0;
+    const worthRaw = fd.get("worth");
+    const worth = worthRaw === "" || worthRaw == null ? null : Number(worthRaw);
+    const entries = [];
+    if (put > 0) entries.push({ id: uid(), date, kind: "add", amount: put });
+    if (worth != null && worth >= 0 && !(put > 0 && worth === put)) entries.push({ id: uid(), date, kind: "value", amount: worth });
+    const newId = await state.db.addInvestment({ ...base, entries });
+    toast("Investment added");
+    if (newId && state.investments.some((i) => i.id === newId)) renderInvDialog(newId);
+    else closeDlg();
+  } catch (err) {
+    toast("Couldn't save: " + (err.message || err));
+  }
+}
+
+function renderInvDialog(id, kind = "add") {
+  const inv = state.investments.find((i) => i.id === id);
+  const dlg = $("#settingsDialog");
+  if (!inv) { if (dlg.open) dlg.close(); return; }
+  state.invId = id;
+  const [, emoji, tname] = typeInfo(inv.type);
+  const link = investCategory();
+  dlg.innerHTML = `
+    <div class="dlg-body">
+      <div class="inv-dlg-head">
+        <div class="cat-emoji" style="--c:${typeColor(inv.type)}">${emoji}</div>
+        <div class="cat-name"><h2>${esc(inv.name)}</h2><small>${esc(tname)} · ${esc(ownerLabel(inv.owner))}</small></div>
+      </div>
+      <div id="invDlgStats"></div>
+      <form id="entryForm" class="entry-form" autocomplete="off" data-link="${link ? esc(link.id) : ""}">
+        <label>What happened?
+          <select name="kind" id="entryKind">
+            <option value="add" ${kind === "add" ? "selected" : ""}>➕ I added money</option>
+            <option value="withdraw" ${kind === "withdraw" ? "selected" : ""}>➖ I withdrew money</option>
+            <option value="value" ${kind === "value" ? "selected" : ""}>🏷️ Update what it's worth now</option>
+          </select>
+        </label>
+        <div class="row2">
+          <label>Date<input type="date" name="date" value="${todayYmd()}" required></label>
+          <label><span id="amtLabel">Amount added</span><input type="number" name="amount" min="0" step="any" inputmode="decimal" placeholder="0" required></label>
+        </div>
+        ${link ? `<label class="check" id="alsoRow"><input type="checkbox" name="alsoExpense" checked><span>Also count it as spending in ${esc(link.emoji)} ${esc(link.name)}</span></label>` : ""}
+        <button class="btn btn-primary" type="submit">Save entry</button>
+      </form>
+      <h3>History</h3>
+      <div id="invDlgEntries"></div>
+      <div class="dlg-actions">
+        <button class="btn btn-ghost" data-act="inv-del" data-id="${esc(id)}">Delete</button>
+        <button class="btn btn-soft" data-act="inv-edit" data-id="${esc(id)}">Edit details</button>
+        <button class="btn btn-primary" data-act="close-settings">Done</button>
+      </div>
+    </div>`;
+  fillInvDialogDynamic(inv);
+  syncEntryForm();
+  if (!dlg.open) dlg.showModal();
+}
+
+function fillInvDialogDynamic(inv) {
+  const stats = $("#invDlgStats");
+  const list = $("#invDlgEntries");
+  if (!stats || !list) return;
+  const r = invReplay(inv);
+  stats.innerHTML = `
+    <div class="inv-dlg-stats">
+      <div><small>Worth now</small><b>${fmt(r.value)}</b></div>
+      <div><small>Invested</small><b>${fmt(r.net)}</b></div>
+      <div><small>Gain / loss</small>${gainChip(r.gain, r.put > 0 ? r.gain / r.put : null)}</div>
+    </div>`;
+  const entries = sortedEntries(inv).reverse();
+  list.innerHTML = entries.length
+    ? entries.map((e) => `
+        <div class="entry-row">
+          <div><b>${KIND_LABEL[e.kind] || "Entry"}</b><small>${esc(e.date)}${e.expenseId ? " · counted as spending" : ""}</small></div>
+          <b>${fmt(e.amount)}</b>
+          <button class="icon-btn sm" data-act="entry-del" data-id="${esc(e.id)}" aria-label="Delete entry">🗑️</button>
+        </div>`).join("")
+    : `<small>No entries yet. Add money or set its current value above.</small>`;
+}
+
+function refreshInvDialog() {
+  const dlg = $("#settingsDialog");
+  if (!dlg || !dlg.open || !state.invId || !$("#invDlgStats")) return;
+  const inv = state.investments.find((i) => i.id === state.invId);
+  if (!inv) { dlg.close(); return; }
+  fillInvDialogDynamic(inv);
+}
+
+function syncEntryForm() {
+  const f = $("#entryForm");
+  if (!f) return;
+  const k = f.elements.kind.value;
+  $("#amtLabel").textContent = k === "value" ? "Worth now" : k === "withdraw" ? "Amount withdrawn" : "Amount added";
+  $("#alsoRow")?.classList.toggle("hide", k !== "add");
+}
+
+async function saveEntry(form) {
+  if (needDbUpdate()) return;
+  const inv = state.investments.find((i) => i.id === state.invId);
+  if (!inv) return;
+  const fd = new FormData(form);
+  const kind = ["add", "withdraw", "value"].includes(fd.get("kind")) ? fd.get("kind") : "add";
+  const amount = Number(fd.get("amount"));
+  const date = String(fd.get("date") || todayYmd());
+  if (!(amount >= 0) || (kind !== "value" && amount === 0)) { toast("Enter an amount."); return; }
+  const entry = { id: uid(), date, kind, amount };
+  try {
+    const catId = form.dataset.link;
+    if (kind === "add" && catId && fd.get("alsoExpense")) {
+      const expId = await state.db.addExpense({ date, amount, categoryId: catId, paidBy: inv.owner, note: `Invest: ${inv.name}` });
+      if (expId) entry.expenseId = expId;
+    }
+    await state.db.saveInvestment(inv.id, { name: inv.name, type: inv.type, owner: inv.owner, note: inv.note || "", entries: [...(inv.entries || []), entry] });
+    form.elements.amount.value = "";
+    toast(kind === "value" ? "Value updated" : kind === "add" ? "Money added" : "Withdrawal saved");
+  } catch (err) {
+    toast("Couldn't save: " + (err.message || err));
+  }
+}
+
+async function deleteEntry(entryId) {
+  if (needDbUpdate()) return;
+  const inv = state.investments.find((i) => i.id === state.invId);
+  const e = inv?.entries?.find((x) => x.id === entryId);
+  if (!inv || !e) return;
+  if (!confirm("Delete this entry?")) return;
+  try {
+    if (e.expenseId) await state.db.deleteExpense(e.expenseId).catch(() => {});
+    await state.db.saveInvestment(inv.id, { name: inv.name, type: inv.type, owner: inv.owner, note: inv.note || "", entries: inv.entries.filter((x) => x.id !== entryId) });
+    toast("Entry deleted");
+  } catch (err) {
+    toast("Couldn't delete: " + (err.message || err));
+  }
+}
+
+async function deleteInvestment(id) {
+  if (needDbUpdate()) return;
+  const inv = state.investments.find((i) => i.id === id);
+  if (!inv) return;
+  if (!confirm(`Delete "${inv.name}" and all its history?`)) return;
+  try {
+    for (const e of inv.entries || []) if (e.expenseId) await state.db.deleteExpense(e.expenseId).catch(() => {});
+    await state.db.deleteInvestment(id);
+    closeDlg();
+    toast("Investment deleted");
+  } catch (err) {
+    toast("Couldn't delete: " + (err.message || err));
+  }
+}
+
+/* ================================================================== */
 /* Settings dialog                                                     */
 /* ================================================================== */
 function openSettings() {
@@ -887,6 +1308,18 @@ async function loadSample() {
       }
     }
   }
+  if (state.db.addInvestment) {
+    const y = state.year;
+    const valDate = y === now.getFullYear() ? todayYmd() : `${y}-12-28`;
+    await state.db.addInvestment({ name: "Gold savings", type: "gold", owner: "both", note: "", entries: [
+      { id: uid(), date: `${y}-01-15`, kind: "add", amount: round(1500 * scale) },
+      { id: uid(), date: `${y}-02-15`, kind: "add", amount: round(1500 * scale) },
+      { id: uid(), date: valDate, kind: "value", amount: round(3320 * scale) } ] });
+    await state.db.addInvestment({ name: "Index fund", type: "stocks", owner: "p1", note: "Monthly plan", entries: [
+      { id: uid(), date: `${y}-03-10`, kind: "add", amount: round(2000 * scale) },
+      { id: uid(), date: `${y}-06-10`, kind: "add", amount: round(2000 * scale) },
+      { id: uid(), date: valDate, kind: "value", amount: round(4410 * scale) } ] });
+  }
   toast("Sample data loaded");
 }
 
@@ -951,6 +1384,11 @@ document.addEventListener("click", async (ev) => {
   switch (act) {
     case "tab": setTab(el.dataset.tab); break;
     case "quick-add": setTab("expenses"); $("#expForm")?.amount.focus({ preventScroll: true }); break;
+    case "inv-new": if (!needDbUpdate()) openInvForm(); break;
+    case "inv-open": renderInvDialog(el.dataset.id, el.dataset.kind || "add"); break;
+    case "inv-edit": openInvForm(el.dataset.id); break;
+    case "inv-del": deleteInvestment(el.dataset.id); break;
+    case "entry-del": deleteEntry(el.dataset.id); break;
     case "open-settings": openSettings(); break;
     case "close-settings": $("#settingsDialog").close(); break;
     case "save-settings": saveSettings(); break;
@@ -999,6 +1437,8 @@ document.addEventListener("submit", (ev) => {
   ev.preventDefault();
   if (ev.target.id === "expForm") submitExpense(ev.target);
   if (ev.target.id === "authForm") doAuth("signin");
+  if (ev.target.id === "invForm") submitInvForm(ev.target);
+  if (ev.target.id === "entryForm") saveEntry(ev.target);
 });
 
 document.addEventListener("input", (ev) => {
@@ -1032,6 +1472,11 @@ window.addEventListener("resize", () => $$(".name-in").forEach(autosize));
 
 document.addEventListener("change", (ev) => {
   const t = ev.target;
+  if (t.id === "entryKind") { syncEntryForm(); return; }
+  if (t.id === "invCat") {
+    state.db.saveSettings({ ...settings(), investCategoryId: t.value }).catch((e) => toast("Couldn't save: " + e.message));
+    return;
+  }
   if (t.id === "yearSel") {
     if (state.dirty && !confirm("Discard the unsaved budget changes?")) {
       t.value = String(state.year);
@@ -1083,6 +1528,7 @@ function onData() {
       renderView();
     }
   } else renderView();
+  refreshInvDialog();
 }
 
 async function boot() {
@@ -1102,6 +1548,7 @@ async function boot() {
     state.settings = null;
     state.budgets = {};
     state.expenses = [];
+    state.investments = [];
     state.draft = null;
     state.dirty = false;
     if (user) {
@@ -1109,11 +1556,14 @@ async function boot() {
         settings: (s) => { state.settings = s; state.loaded.settings = true; onData(); },
         budgets: (b) => { state.budgets = b; state.loaded.budgets = true; onData(); },
         expenses: (e) => { state.expenses = e; state.loaded.expenses = true; onData(); },
+        investments: (v) => { state.investments = v; onData(); },
         error: (e) => toast(e.code === "permission-denied" ? "No permission. Check your Firestore rules." : "Sync problem: " + e.message),
       });
     }
     render();
   });
 }
+
+$("#settingsDialog").addEventListener("close", () => { state.invId = null; });
 
 boot();

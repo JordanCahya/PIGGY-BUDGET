@@ -46,6 +46,7 @@ async function createFirebaseDb() {
   const settingsRef = () => fs.doc(db, "families", uid, "meta", "settings");
   const budgetsCol = () => fs.collection(db, "families", uid, "budgets");
   const expensesCol = () => fs.collection(db, "families", uid, "expenses");
+  const investmentsCol = () => fs.collection(db, "families", uid, "investments");
 
   return {
     mode: "firebase",
@@ -61,7 +62,7 @@ async function createFirebaseDb() {
     resetPassword: (email) => authMod.sendPasswordResetEmail(auth, email),
     signOut: () => authMod.signOut(auth),
 
-    subscribe({ settings, budgets, expenses, error }) {
+    subscribe({ settings, budgets, expenses, investments, error }) {
       const onErr = (e) => error && error(e);
       const u1 = fs.onSnapshot(settingsRef(), (snap) => settings(snap.exists() ? snap.data() : null), onErr);
       const u2 = fs.onSnapshot(
@@ -74,18 +75,32 @@ async function createFirebaseDb() {
         (qs) => expenses(qs.docs.map((d) => ({ id: d.id, ...d.data() }))),
         onErr
       );
+      const u4 = investments
+        ? fs.onSnapshot(investmentsCol(), (qs) => investments(qs.docs.map((d) => ({ id: d.id, ...d.data() }))), onErr)
+        : () => {};
       return () => {
         u1();
         u2();
         u3();
+        u4();
       };
     },
 
     saveSettings: (s) => fs.setDoc(settingsRef(), s),
     saveBudget: (year, b) => fs.setDoc(fs.doc(budgetsCol(), String(year)), b),
-    addExpense: (e) => fs.addDoc(expensesCol(), { ...e, createdAt: fs.serverTimestamp() }),
+    addExpense: async (e) => {
+      const ref = await fs.addDoc(expensesCol(), { ...e, createdAt: fs.serverTimestamp() });
+      return ref.id;
+    },
     updateExpense: (id, e) => fs.setDoc(fs.doc(expensesCol(), id), e, { merge: true }),
     deleteExpense: (id) => fs.deleteDoc(fs.doc(expensesCol(), id)),
+
+    addInvestment: async (inv) => {
+      const ref = await fs.addDoc(investmentsCol(), { ...inv, createdAt: fs.serverTimestamp() });
+      return ref.id;
+    },
+    saveInvestment: (id, inv) => fs.setDoc(fs.doc(investmentsCol(), id), inv, { merge: true }),
+    deleteInvestment: (id) => fs.deleteDoc(fs.doc(investmentsCol(), id)),
   };
 }
 
@@ -101,7 +116,7 @@ function createLocalDb() {
       return {};
     }
   };
-  const data = { settings: null, budgets: {}, expenses: [], ...load() };
+  const data = { settings: null, budgets: {}, expenses: [], investments: [], ...load() };
   const subs = new Set();
   const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
@@ -126,11 +141,12 @@ function createLocalDb() {
     async resetPassword() {},
     async signOut() {},
 
-    subscribe({ settings, budgets, expenses }) {
+    subscribe({ settings, budgets, expenses, investments }) {
       const notify = () => {
         settings(data.settings);
         budgets({ ...data.budgets });
         expenses(data.expenses.map((e) => ({ ...e })));
+        if (investments) investments(JSON.parse(JSON.stringify(data.investments || [])));
       };
       subs.add(notify);
       queueMicrotask(notify);
@@ -146,8 +162,10 @@ function createLocalDb() {
       persist();
     },
     async addExpense(e) {
-      data.expenses.push({ ...e, id: newId() });
+      const id = newId();
+      data.expenses.push({ ...e, id });
       persist();
+      return id;
     },
     async updateExpense(id, e) {
       const i = data.expenses.findIndex((x) => x.id === id);
@@ -156,6 +174,22 @@ function createLocalDb() {
     },
     async deleteExpense(id) {
       data.expenses = data.expenses.filter((x) => x.id !== id);
+      persist();
+    },
+
+    async addInvestment(inv) {
+      const id = newId();
+      data.investments.push({ ...inv, id });
+      persist();
+      return id;
+    },
+    async saveInvestment(id, inv) {
+      const i = data.investments.findIndex((x) => x.id === id);
+      if (i >= 0) data.investments[i] = { ...data.investments[i], ...inv, id };
+      persist();
+    },
+    async deleteInvestment(id) {
+      data.investments = data.investments.filter((x) => x.id !== id);
       persist();
     },
   };
