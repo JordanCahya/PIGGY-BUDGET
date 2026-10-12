@@ -1564,6 +1564,55 @@ async function boot() {
   });
 }
 
+/* ================================================================== */
+/* Floating background                                                 */
+/* ================================================================== */
+function addBackground() {
+  if ($(".bg-float")) return;
+  const pig = (x, y, size, dur, delay, op, cls, flip) =>
+    `<svg class="fl ${cls}" viewBox="0 0 64 56" style="--x:${x}%;--y:${y}%;--s:${size}px;--d:${dur}s;--delay:${delay}s;--o:${op}"><use href="#mini-pig"${flip ? ' transform="translate(64 0) scale(-1 1)"' : ""}/></svg>`;
+  const bit = (ch, x, y, size, dur, delay, op, cls) =>
+    `<span class="fl emo ${cls}" style="--x:${x}%;--y:${y}%;--s:${size}px;--d:${dur}s;--delay:${delay}s;--o:${op}">${ch}</span>`;
+  const items = [
+    pig(6, 14, 58, 28, -4, 0.75, "a", false),
+    pig(80, 9, 48, 34, -12, 0.7, "b", true),
+    pig(13, 60, 44, 31, -20, 0.65, "b", false),
+    pig(72, 56, 66, 38, -7, 0.7, "a", true),
+    pig(44, 83, 52, 30, -15, 0.7, "a", false),
+    pig(89, 79, 40, 26, -2, 0.6, "b", true),
+    pig(40, 28, 36, 36, -25, 0.5, "a", true),
+    bit("🪙", 24, 40, 26, 22, -3, 0.7, "b"),
+    bit("🪙", 64, 22, 22, 27, -9, 0.65, "a"),
+    bit("🪙", 56, 68, 28, 24, -14, 0.7, "b"),
+    bit("🪙", 8, 88, 24, 30, -6, 0.6, "a"),
+    bit("💗", 34, 8, 24, 25, -11, 0.6, "a"),
+    bit("💗", 93, 44, 22, 29, -18, 0.6, "b"),
+    bit("💗", 20, 76, 26, 23, -5, 0.55, "b"),
+    bit("✨", 50, 50, 22, 21, -8, 0.6, "a"),
+    bit("✨", 77, 88, 20, 26, -13, 0.6, "b"),
+    bit("✨", 4, 36, 22, 28, -1, 0.6, "a"),
+  ];
+  const el = document.createElement("div");
+  el.className = "bg-float";
+  el.setAttribute("aria-hidden", "true");
+  el.innerHTML = `
+    <svg width="0" height="0" style="position:absolute"><defs>
+      <symbol id="mini-pig" viewBox="0 0 64 56">
+        <path d="M14 14 L10 2 Q20 4 26 12 Z" fill="#ff9ebb"/>
+        <path d="M40 10 L48 0 Q56 6 54 16 Z" fill="#ff9ebb"/>
+        <rect x="16" y="44" width="9" height="10" rx="4.5" fill="#ff9ebb"/>
+        <rect x="38" y="44" width="9" height="10" rx="4.5" fill="#ff9ebb"/>
+        <ellipse cx="32" cy="32" rx="26" ry="20" fill="#ffd0de" stroke="#ff8fb1" stroke-width="3"/>
+        <ellipse cx="47" cy="36" rx="9" ry="7" fill="#ffb3cb" stroke="#ff8fb1" stroke-width="2.5"/>
+        <circle cx="44" cy="36" r="1.6" fill="#7a5a8a"/><circle cx="50" cy="36" r="1.6" fill="#7a5a8a"/>
+        <circle cx="37" cy="26" r="2.6" fill="#4f3d5c"/><circle cx="37.9" cy="25.1" r="0.9" fill="#fff"/>
+        <ellipse cx="30" cy="38" rx="5" ry="3" fill="#ff7a9c" opacity=".35"/>
+      </symbol>
+    </defs></svg>${items.join("")}`;
+  document.body.prepend(el);
+}
+addBackground();
+
 $("#settingsDialog").addEventListener("close", () => { state.invId = null; });
 
 boot();
