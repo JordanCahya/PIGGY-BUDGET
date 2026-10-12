@@ -33,12 +33,7 @@ body {
   font-size: 16px;
   line-height: 1.5;
   color: var(--ink);
-  background:
-    radial-gradient(circle at 8% 6%, #ffe0ec 0, transparent 38%),
-    radial-gradient(circle at 94% 12%, #dcefff 0, transparent 36%),
-    radial-gradient(circle at 50% 100%, #e4fbee 0, transparent 40%),
-    var(--bg);
-  background-attachment: fixed;
+  background: var(--bg);
 }
 
 h1, h2, h3 { font-family: var(--font-head); font-weight: 600; line-height: 1.15; margin: 0; }
@@ -505,3 +500,12 @@ dialog input[type="date"]::-webkit-date-and-time-value { text-align: left; min-h
   50% { transform: translate(-14px, 10px) rotate(-3deg); }
 }
 .card { background: rgba(255, 255, 255, 0.96); }
+
+/* v5: investment review */
+.review-note { margin-top: 10px; }
+.stat > small + small { margin-top: 2px; }
+
+/* v6: plain background, no floating/bobbing decorations */
+body { background: var(--bg); background-attachment: scroll; }
+.piggy { animation: none; }
+.splash .big { animation: none; }
