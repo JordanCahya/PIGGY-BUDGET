@@ -509,3 +509,18 @@ dialog input[type="date"]::-webkit-date-and-time-value { text-align: left; min-h
 body { background: var(--bg); background-attachment: scroll; }
 .piggy { animation: none; }
 .splash .big { animation: none; }
+
+/* v7: drag to reorder categories */
+.brow-main { grid-template-columns: 56px 1fr 110px 40px 40px; }
+.drag-handle { cursor: grab; touch-action: none; -webkit-user-select: none; user-select: none; display: grid; place-items: center; color: var(--ink-soft); }
+.drag-handle:active { cursor: grabbing; }
+.brow.dragging {
+  position: fixed; z-index: 1000; margin: 0; background: #fff; cursor: grabbing;
+  box-shadow: 0 18px 40px rgba(79, 61, 92, 0.28); transform: scale(1.015);
+}
+.brow-placeholder { border: 2px dashed var(--pink); border-radius: 20px; background: var(--pink-soft); opacity: 0.7; }
+
+@media (max-width: 760px) {
+  .brow-main { grid-template-columns: 52px 1fr 44px 44px; grid-template-areas: "emoji name name name" "pct pct handle del"; }
+  .brow-main .drag-handle { grid-area: handle; justify-self: end; width: 44px; height: 44px; }
+}
