@@ -303,3 +303,93 @@ dialog form, .dlg-body { display: grid; gap: 14px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* ================================================================== */
+/* v2: wrapping text, mobile comfort, angry piggy                      */
+/* ================================================================== */
+button, select, input, textarea { touch-action: manipulation; }
+
+/* long names wrap instead of stretching the box */
+.grid > *, .grid-2 > *, .two-col > * { min-width: 0; }
+.cat-card, .person, .exp-main { min-width: 0; }
+.cat-name b, .exp-main b, .person-head h3 {
+  white-space: normal; overflow: visible; text-overflow: clip;
+  overflow-wrap: anywhere; line-height: 1.2;
+}
+.cat-name small { overflow-wrap: anywhere; }
+.cat-split .chip, .cat-amounts span { white-space: normal; overflow-wrap: anywhere; }
+.cat-top { align-items: flex-start; }
+.cat-top .chip { flex: none; }
+th:first-child, td:first-child { white-space: normal; min-width: 130px; max-width: 160px; overflow-wrap: anywhere; }
+
+textarea {
+  font: 600 1rem var(--font-body); color: var(--ink); line-height: 1.3;
+  background: #fffafc; border: 2px solid var(--line); border-radius: 14px;
+  padding: 10px 12px; width: 100%; min-width: 0; display: block;
+  resize: none; overflow: hidden;
+}
+textarea:focus { border-color: var(--pink); outline: none; box-shadow: 0 0 0 4px var(--pink-soft); }
+dialog { max-height: 90vh; overflow: auto; }
+
+/* angry piggy */
+.piggy.mad { animation: shake 0.45s ease-in-out infinite; }
+@keyframes shake {
+  0%, 100% { transform: translateX(0) rotate(0); }
+  20% { transform: translateX(-3px) rotate(-1.5deg); }
+  40% { transform: translateX(3px) rotate(1.5deg); }
+  60% { transform: translateX(-2px) rotate(-1deg); }
+  80% { transform: translateX(2px) rotate(1deg); }
+}
+.steam circle {
+  fill: #fff; stroke: #ffb3bb; stroke-width: 2;
+  transform-box: fill-box; transform-origin: center;
+  animation: puff 1.5s ease-out infinite;
+}
+.steam circle:nth-child(2) { animation-delay: 0.25s; }
+.steam.s2 circle { animation-delay: 0.6s; }
+.steam.s2 circle:nth-child(2) { animation-delay: 0.85s; }
+@keyframes puff {
+  0% { opacity: 0; transform: translateY(6px) scale(0.5); }
+  30% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-10px) scale(1.2); }
+}
+.bubble.mad { background: #ffe0e3; color: #b3303f; }
+.hero:has(.piggy.mad) { background: linear-gradient(135deg, #fff 0%, #fff0f1 100%); }
+
+/* quick-add button (phones only) */
+.fab {
+  display: none; position: fixed; right: 18px; bottom: calc(94px + env(safe-area-inset-bottom, 0px));
+  width: 60px; height: 60px; border-radius: 50%; border: 0; cursor: pointer; z-index: 45;
+  background: var(--pink); color: #fff; font: 600 2rem/1 var(--font-head);
+  box-shadow: 0 5px 0 var(--pink-deep), 0 12px 24px rgba(240, 102, 143, 0.35);
+}
+.fab:active { transform: translateY(2px); }
+
+@media (max-width: 760px) {
+  .fab { display: grid; place-items: center; }
+  .topbar { gap: 10px; }
+  .controls { width: 100%; }
+  .controls select { flex: 1; min-width: 0; }
+  .icon-btn { width: 44px; height: 44px; }
+  .icon-btn.sm { width: 40px; height: 40px; }
+  .btn { min-height: 46px; }
+  input, select, textarea { min-height: 46px; }
+  .card { padding: 16px; }
+
+  /* budget category editor: name gets its own full-width row */
+  .brow-main { grid-template-columns: 52px 1fr 44px; grid-template-areas: "emoji name name" "pct pct del"; gap: 8px; }
+  .brow-main .emoji-in { grid-area: emoji; }
+  .brow-main .name-in { grid-area: name; }
+  .brow-main .pct-in { grid-area: pct; max-width: 170px; }
+  .brow-main > .icon-btn { grid-area: del; justify-self: end; }
+  .brow-split .split-label { white-space: normal; }
+
+  /* save bar stays reachable while scrolling the category list */
+  .budget-actions {
+    position: sticky; bottom: calc(88px + env(safe-area-inset-bottom, 0px)); z-index: 5;
+    background: rgba(255, 255, 255, 0.96); padding: 10px; border-radius: 20px;
+    box-shadow: 0 6px 20px rgba(240, 102, 143, 0.18);
+  }
+  .budget-actions .btn { flex: 1 1 140px; }
+  .budget-actions .spacer { display: none; }
+}
