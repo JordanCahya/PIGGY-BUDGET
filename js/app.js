@@ -585,6 +585,7 @@ function budgetHtml() {
         <input class="emoji-in" data-f="emoji" value="${esc(cat.emoji)}" maxlength="4" aria-label="Emoji">
         <textarea class="name-in" data-f="name" rows="1" maxlength="40" placeholder="Category name" aria-label="Category name">${esc(cat.name)}</textarea>
         <label class="pct-in"><input type="number" data-f="percent" min="0" max="100" step="0.5" value="${cat.percent}" aria-label="Percent of income"><span>%</span></label>
+        <button type="button" class="icon-btn sm drag-handle" aria-label="Drag to reorder ${esc(cat.name)}" title="Drag to reorder (or focus and press ↑ ↓)">${GRIP}</button>
         <button class="icon-btn sm" data-act="del-cat" data-id="${esc(cat.id)}" aria-label="Remove category">🗑️</button>
       </div>
       <div class="brow-split">
@@ -630,7 +631,7 @@ function budgetHtml() {
     </section>
     <section class="card">
       <h2>Categories 🎯</h2>
-      <small>Give each category a percentage of your total income. Each one can be split between you by income, or with a custom split.</small>
+      <small>Give each category a percentage of your total income. Each one can be split between you by income, or with a custom split. Drag the grip ⠿ to change the order.</small>
       <div class="budget-list" id="budgetList">${rows}</div>
       <div class="budget-actions">
         <button class="btn btn-soft" data-act="add-cat">Add category</button>
@@ -688,6 +689,101 @@ function markDirty() {
   state.dirty = true;
   updateBudgetDerived();
 }
+
+// ---- drag to reorder categories (mouse, touch and keyboard) ----
+const GRIP = `<svg viewBox="0 0 12 18" width="12" height="18" fill="currentColor" aria-hidden="true"><circle cx="3" cy="3" r="1.7"/><circle cx="9" cy="3" r="1.7"/><circle cx="3" cy="9" r="1.7"/><circle cx="9" cy="9" r="1.7"/><circle cx="3" cy="15" r="1.7"/><circle cx="9" cy="15" r="1.7"/></svg>`;
+let drag = null;
+
+document.addEventListener("pointerdown", (ev) => {
+  const h = ev.target.closest?.(".drag-handle");
+  if (!h || state.tab !== "budget" || drag) return;
+  if (ev.pointerType === "mouse" && ev.button !== 0) return;
+  const row = h.closest(".brow");
+  if (!row) return;
+  ev.preventDefault();
+  const rect = row.getBoundingClientRect();
+  const ph = document.createElement("div");
+  ph.className = "brow-placeholder";
+  ph.style.height = rect.height + "px";
+  row.after(ph); // keeps the gap open while the row is lifted
+  row.classList.add("dragging");
+  Object.assign(row.style, { left: rect.left + "px", top: rect.top + "px", width: rect.width + "px" });
+  drag = { row, list: row.parentElement, ph, h, id: row.dataset.id, offset: ev.clientY - rect.top, y: ev.clientY, pointerId: ev.pointerId, raf: 0 };
+  try { h.setPointerCapture(ev.pointerId); } catch (e) { /* not critical */ }
+  document.addEventListener("pointermove", onDragMove);
+  document.addEventListener("pointerup", onDragEnd);
+  document.addEventListener("pointercancel", onDragEnd);
+  drag.raf = requestAnimationFrame(dragTick);
+});
+
+function onDragMove(ev) {
+  if (!drag || ev.pointerId !== drag.pointerId) return;
+  drag.y = ev.clientY;
+  ev.preventDefault();
+}
+
+function dragTick() {
+  if (!drag) return;
+  const d = drag;
+  const top = d.y - d.offset;
+  d.row.style.top = top + "px";
+  // scroll the page when dragging near the top or bottom edge
+  const vh = window.innerHeight;
+  if (d.y < 90) window.scrollBy(0, -Math.min(18, (90 - d.y) / 4 + 4));
+  else if (d.y > vh - 150) window.scrollBy(0, Math.min(18, (d.y - (vh - 150)) / 4 + 4));
+  // move the gap to where the row's centre is
+  const center = top + d.row.offsetHeight / 2;
+  let before = null;
+  for (const c of d.list.children) {
+    if (c === d.row || c === d.ph) continue;
+    const r = c.getBoundingClientRect();
+    if (center < r.top + r.height / 2) { before = c; break; }
+  }
+  if (before ? d.ph.nextElementSibling !== before : d.list.lastElementChild !== d.ph) d.list.insertBefore(d.ph, before);
+  d.raf = requestAnimationFrame(dragTick);
+}
+
+function onDragEnd(ev) {
+  if (!drag || ev.pointerId !== drag.pointerId) return;
+  const d = drag;
+  drag = null;
+  cancelAnimationFrame(d.raf);
+  document.removeEventListener("pointermove", onDragMove);
+  document.removeEventListener("pointerup", onDragEnd);
+  document.removeEventListener("pointercancel", onDragEnd);
+  try { d.h.releasePointerCapture(d.pointerId); } catch (e) { /* not critical */ }
+  if (ev.type !== "pointercancel") {
+    const order = [];
+    for (const el of d.list.children) {
+      if (el === d.ph) order.push(d.id);
+      else if (el !== d.row) order.push(el.dataset.id);
+    }
+    const draft = getDraft();
+    const byId = new Map(draft.b.categories.map((c) => [c.id, c]));
+    const next = order.map((id) => byId.get(id)).filter(Boolean);
+    if (next.length === draft.b.categories.length && next.some((c, i) => c !== draft.b.categories[i])) {
+      draft.b.categories = next;
+      state.dirty = true;
+    }
+  }
+  renderView();
+}
+
+// keyboard: focus the grip and press ↑ / ↓
+document.addEventListener("keydown", (ev) => {
+  const h = ev.target.closest?.(".drag-handle");
+  if (!h || (ev.key !== "ArrowUp" && ev.key !== "ArrowDown")) return;
+  ev.preventDefault();
+  const id = h.closest(".brow").dataset.id;
+  const cats = getDraft().b.categories;
+  const i = cats.findIndex((c) => c.id === id);
+  const j = i + (ev.key === "ArrowUp" ? -1 : 1);
+  if (i < 0 || j < 0 || j >= cats.length) return;
+  [cats[i], cats[j]] = [cats[j], cats[i]];
+  state.dirty = true;
+  renderView();
+  $(`.brow[data-id="${id}"] .drag-handle`)?.focus();
+});
 
 function balanceToHundred() {
   const cats = getDraft().b.categories;
@@ -1644,7 +1740,7 @@ function onData() {
   refreshChrome();
   if (state.tab === "expenses") updateExpenseList();
   else if (state.tab === "budget") {
-    if (!state.dirty) {
+    if (!state.dirty && !drag) {
       state.draft = null;
       renderView();
     }
