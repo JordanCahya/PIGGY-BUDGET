@@ -467,3 +467,30 @@ dialog input[type="date"]::-webkit-date-and-time-value { text-align: left; min-h
   .tab { flex: 1 1 0; min-width: 0; padding: 8px 2px; font-size: 0.7rem; justify-content: center; align-items: center; }
   .tab span:first-child { font-size: 1.25rem; line-height: 1.1; }
 }
+
+/* ================================================================== */
+/* v5: floating pigs background                                        */
+/* ================================================================== */
+.bg-float { position: fixed; inset: 0; overflow: hidden; pointer-events: none; z-index: 0; }
+.bg-float .fl {
+  position: absolute; left: var(--x); top: var(--y); opacity: var(--o, 0.6);
+  animation: drift-a var(--d, 30s) ease-in-out infinite; animation-delay: var(--delay, 0s);
+  will-change: transform; user-select: none;
+}
+.bg-float svg.fl { width: var(--s); height: auto; aspect-ratio: 64 / 56; }
+.bg-float .emo { font-size: var(--s); line-height: 1; }
+.bg-float .fl.b { animation-name: drift-b; }
+@keyframes drift-a {
+  0%, 100% { transform: translate(0, 0) rotate(-6deg); }
+  25% { transform: translate(40px, -30px) rotate(4deg); }
+  50% { transform: translate(70px, 20px) rotate(-3deg); }
+  75% { transform: translate(20px, 45px) rotate(6deg); }
+}
+@keyframes drift-b {
+  0%, 100% { transform: translate(0, 0) rotate(5deg); }
+  30% { transform: translate(-50px, 35px) rotate(-5deg); }
+  60% { transform: translate(-20px, -40px) rotate(3deg); }
+  80% { transform: translate(-60px, -10px) rotate(-4deg); }
+}
+#app { position: relative; z-index: 1; }
+.card { background: rgba(255, 255, 255, 0.9); }
