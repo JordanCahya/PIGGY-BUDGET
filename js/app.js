@@ -794,7 +794,8 @@ function yearHtml() {
           <tbody>${rows || `<tr><td colspan="16">No categories yet.</td></tr>`}</tbody>
         </table>
       </div>
-    </section>`;
+    </section>
+    ${invReviewHtml()}`;
 }
 
 /* ================================================================== */
@@ -825,7 +826,7 @@ function ownerLabel(o) {
   const p = settings().persons[o === "p2" ? 1 : 0];
   return `${p.emoji} ${p.name}`;
 }
-const fmtPct = (x) => `${x >= 0 ? "+" : "−"}${Math.abs(x * 100).toFixed(1)}%`;
+const fmtPct = (x) => (Math.abs(x) < 0.00005 ? "0.0%" : `${x >= 0 ? "+" : "−"}${Math.abs(x * 100).toFixed(1)}%`);
 
 function gainChip(gain, ret) {
   if (Math.abs(gain) < 0.005) return `<span class="chip">No change yet</span>`;
@@ -838,13 +839,16 @@ const sortedEntries = (inv) =>
 
 // Replay the history: adding money raises the value, withdrawing lowers it, a "value update" resets it.
 function invReplay(inv, untilYmd) {
-  let value = 0, put = 0, out = 0;
+  let value = 0, put = 0, out = 0, flowSeen = false;
   for (const e of sortedEntries(inv)) {
     if (untilYmd && e.date > untilYmd) break;
     const a = Number(e.amount) || 0;
-    if (e.kind === "add") { value += a; put += a; }
-    else if (e.kind === "withdraw") { value -= a; out += a; }
-    else if (e.kind === "value") value = a;
+    if (e.kind === "add") { value += a; put += a; flowSeen = true; }
+    else if (e.kind === "withdraw") { value -= a; out += a; flowSeen = true; }
+    else if (e.kind === "value") {
+      if (!flowSeen) { put += a; flowSeen = true; } // first worth entered = the starting amount
+      value = a;
+    }
   }
   const net = put - out;
   return { value, put, out, net, gain: value - net };
@@ -867,6 +871,123 @@ function portfolio() {
   t.net = t.put - t.out;
   t.ret = t.put > 0 ? t.gain / t.put : null;
   return t;
+}
+
+// Money going into (+) or out of (−) a holding. A first "worth now" entry counts as the starting amount.
+function invFlows(inv) {
+  const out = [];
+  let seen = false;
+  for (const e of sortedEntries(inv)) {
+    const a = Number(e.amount) || 0;
+    if (e.kind === "add") { out.push({ date: e.date, amt: a }); seen = true; }
+    else if (e.kind === "withdraw") { out.push({ date: e.date, amt: -a }); seen = true; }
+    else if (e.kind === "value" && !seen) { out.push({ date: e.date, amt: a }); seen = true; }
+  }
+  return out;
+}
+
+const daysBetween = (a, b) => {
+  const [y1, m1, d1] = a.split("-").map(Number);
+  const [y2, m2, d2] = b.split("-").map(Number);
+  return Math.round((Date.UTC(y2, m2 - 1, d2) - Date.UTC(y1, m1 - 1, d1)) / 86400000);
+};
+
+// Annualised rate that makes all dated cash flows add up to zero (a.k.a. XIRR).
+function xirr(flows) {
+  const f = (r) => flows.reduce((a, x) => a + x.amt / Math.pow(1 + r, x.t), 0);
+  let lo = -0.99, hi = 10;
+  let flo = f(lo);
+  const fhi = f(hi);
+  if (!isFinite(flo) || !isFinite(fhi) || flo * fhi > 0) return null;
+  for (let i = 0; i < 200; i++) {
+    const mid = (lo + hi) / 2;
+    const fm = f(mid);
+    if (Math.abs(fm) < 1e-9) return mid;
+    if (flo * fm < 0) hi = mid;
+    else { lo = mid; flo = fm; }
+  }
+  return (lo + hi) / 2;
+}
+
+// How the chosen holdings did during one year (up to today for the current year).
+function periodStats(invs, year) {
+  const start = `${year - 1}-12-31`;
+  const today = todayYmd();
+  let end = `${year}-12-31`;
+  if (end > today) end = today;
+  if (end <= start) return null;
+  const D = daysBetween(start, end);
+  let v0 = 0, v1 = 0, added = 0, withdrawn = 0, weighted = 0, first = null;
+  const cf = [];
+  for (const inv of invs) {
+    v0 += invReplay(inv, start).value;
+    v1 += invReplay(inv, end).value;
+    for (const fl of invFlows(inv)) {
+      if (fl.date > end) continue;
+      if (first === null || fl.date < first) first = fl.date;
+      cf.push({ date: fl.date, amt: -fl.amt });
+      if (fl.date > start) {
+        if (fl.amt > 0) added += fl.amt; else withdrawn += -fl.amt;
+        weighted += fl.amt * ((D - daysBetween(start, fl.date)) / D);
+      }
+    }
+  }
+  const net = added - withdrawn;
+  const gain = v1 - v0 - net;
+  const base = v0 + weighted; // money at work, weighted by how long it was invested
+  const dietz = base > 0 ? gain / base : null;
+  let cagr = null;
+  if (first) {
+    const span = daysBetween(first, end);
+    if (span >= 365 && v1 > 0) {
+      const flows = cf.map((x) => ({ t: daysBetween(first, x.date) / 365, amt: x.amt }));
+      flows.push({ t: span / 365, amt: v1 });
+      cagr = xirr(flows);
+    }
+  }
+  return { start, end, v0, v1, added, withdrawn, net, gain, dietz, cagr };
+}
+
+const signed = (g) =>
+  `<span class="${g > 0.005 ? "pos" : g < -0.005 ? "neg" : ""}">${g > 0.005 ? "+" : g < -0.005 ? "−" : ""}${fmt(Math.abs(g))}</span>`;
+const pctText = (x) => (x == null ? "–" : `<span class="${x > 0.00005 ? "pos" : x < -0.00005 ? "neg" : ""}">${fmtPct(x)}</span>`);
+
+function invReviewHtml() {
+  if (!state.investments.length) return "";
+  const head = (note) => `<div class="section-title"><h2>Investment review ${state.year} 📈</h2><small>${note}</small></div>`;
+  const tot = periodStats(state.investments, state.year);
+  if (!tot) return `${head("")}<section class="card"><div class="empty">⏳<p>${state.year} hasn't started yet.</p></div></section>`;
+  const live = state.year === now.getFullYear();
+  const rows = state.investments
+    .map((inv) => ({ inv, st: periodStats([inv], state.year) }))
+    .filter((r) => r.st && (r.st.v0 > 0 || r.st.v1 > 0 || r.st.added > 0 || r.st.withdrawn > 0))
+    .sort((a, b) => b.st.v1 - a.st.v1);
+  const body = rows.map(({ inv, st }) => `
+    <tr>
+      <td>${typeInfo(inv.type)[1]} ${esc(inv.name)}</td>
+      <td>${fmt(st.v0)}</td><td>${fmt(st.added)}</td><td>${fmt(st.withdrawn)}</td><td>${fmt(st.v1)}</td>
+      <td>${signed(st.gain)}</td><td>${pctText(st.dietz)}</td><td>${pctText(st.cagr)}</td>
+    </tr>`).join("");
+  return `
+    ${head(live ? "Year to date, as of today" : `1 Jan to 31 Dec ${state.year}`)}
+    <section class="stats">
+      <div class="card stat"><small>Worth ${live ? "today" : `end of ${state.year}`}</small><b>${fmt(tot.v1)}</b></div>
+      <div class="card stat"><small>Started the year with</small><b>${fmt(tot.v0)}</b></div>
+      <div class="card stat"><small>Money added</small><b>${fmt(tot.added)}</b>${tot.withdrawn > 0 ? `<small>${fmt(tot.withdrawn)} withdrawn</small>` : ""}</div>
+      <div class="card stat"><small>Money grown</small><b>${signed(tot.gain)}</b></div>
+      <div class="card stat"><small>Growth</small><b>${pctText(tot.dietz)}</b></div>
+      <div class="card stat"><small>CAGR</small><b>${pctText(tot.cagr)}</b>${tot.cagr == null ? `<small>Shows after 1 year of history</small>` : `<small>Per year since the first entry</small>`}</div>
+    </section>
+    <section class="card">
+      <h2>By holding</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Holding</th><th>Start of year</th><th>Added</th><th>Withdrawn</th><th>Worth</th><th>Grown</th><th>Growth</th><th>CAGR</th></tr></thead>
+          <tbody>${body || `<tr><td colspan="8">Nothing invested in ${state.year} yet.</td></tr>`}</tbody>
+        </table>
+      </div>
+      <p class="review-note"><small>Grown is what your money earned, without the money you added. Growth weighs each deposit by how long it was invested. CAGR is the average yearly growth since the first entry. Values only change when you update them in the Invest tab.</small></p>
+    </section>`;
 }
 
 // Budget category that funds investing (chosen in the Invest tab, or guessed from the name).
