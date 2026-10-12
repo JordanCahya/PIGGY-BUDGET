@@ -247,6 +247,11 @@ function shellHtml() {
     <main id="view" class="view"></main>`;
 }
 
+function autosize(t) {
+  t.style.height = "auto";
+  t.style.height = t.scrollHeight + 2 + "px";
+}
+
 function renderView() {
   const v = $("#view");
   if (!v) return;
@@ -256,7 +261,10 @@ function renderView() {
     initExpenseForm();
     updateExpenseList();
   }
-  if (state.tab === "budget") updateBudgetDerived();
+  if (state.tab === "budget") {
+    updateBudgetDerived();
+    $$(".name-in").forEach(autosize);
+  }
 }
 
 function setTab(tab) {
@@ -278,26 +286,42 @@ function refreshDirtyDot() {
 /* ================================================================== */
 /* Rendering: Home (monthly dashboard)                                 */
 /* ================================================================== */
-function piggySvg(level) {
+function piggySvg(level, mad = false) {
   const lv = Math.max(0, Math.min(1, level));
   const y = (137 - lv * 104).toFixed(1);
   const ya = (y - 7).toFixed(1);
+  const skin = mad ? "#ff9ea6" : "#ff9ebb";
+  const outline = mad ? "#f2535f" : "#ff8fb1";
+  const label = mad ? "Angry piggy bank: this month is over budget" : `Piggy bank, ${Math.round(lv * 100)}% of this month's budget left`;
+  const fill = mad ? "" : `<g clip-path="url(#pigBody)"><path d="M0 ${y} Q25 ${ya} 50 ${y} T100 ${y} T150 ${y} T200 ${y} V160 H0 Z" fill="${skin}"/></g>`;
+  const steam = mad ? `
+    <g class="steam"><circle cx="50" cy="4" r="6"/><circle cx="40" cy="-8" r="4"/></g>
+    <g class="steam s2"><circle cx="128" cy="0" r="6"/><circle cx="138" cy="-11" r="4"/></g>
+    <text x="156" y="46" font-size="22">💢</text>` : "";
+  const face = mad
+    ? `<ellipse cx="132" cy="92" rx="11" ry="7" fill="#f2535f" opacity=".45"/>
+       <circle cx="142" cy="73" r="4.6" fill="#4f3d5c"/>
+       <path d="M129 60 L153 69" stroke="#4f3d5c" stroke-width="4.5" stroke-linecap="round"/>`
+    : `<circle cx="142" cy="72" r="5" fill="#4f3d5c"/><circle cx="143.6" cy="70.4" r="1.7" fill="#fff"/>
+       <ellipse cx="132" cy="92" rx="9" ry="6" fill="#ff7a9c" opacity=".4"/>`;
+  const mouth = mad ? `<path d="M162 104 q8 -7 16 0" fill="none" stroke="#7a5a8a" stroke-width="3.5" stroke-linecap="round"/>` : "";
   return `
-  <svg class="piggy" viewBox="0 0 220 160" role="img" aria-label="Piggy bank, ${Math.round(lv * 100)}% of this month's budget left">
+  <svg class="piggy ${mad ? "mad" : ""}" viewBox="0 -16 220 176" role="img" aria-label="${label}">
     <defs><clipPath id="pigBody"><ellipse cx="100" cy="86" rx="72" ry="52"/></clipPath></defs>
-    <path d="M62 50 L54 16 Q76 20 90 40 Z" fill="#ff9ebb"/>
-    <path d="M108 38 L124 12 Q142 22 140 48 Z" fill="#ff9ebb"/>
-    <rect x="52" y="120" width="26" height="30" rx="11" fill="#ff9ebb"/>
-    <rect x="118" y="120" width="26" height="30" rx="11" fill="#ff9ebb"/>
-    <path d="M30 80 q-22 -6 -15 -23 q7 -12 15 -2" fill="none" stroke="#ff9ebb" stroke-width="6" stroke-linecap="round"/>
-    <ellipse cx="100" cy="86" rx="72" ry="52" fill="#ffeef4"/>
-    <g clip-path="url(#pigBody)"><path d="M0 ${y} Q25 ${ya} 50 ${y} T100 ${y} T150 ${y} T200 ${y} V160 H0 Z" fill="#ff9ebb"/></g>
-    <ellipse cx="100" cy="86" rx="72" ry="52" fill="none" stroke="#ff8fb1" stroke-width="4"/>
+    ${steam}
+    <path d="M62 50 L54 16 Q76 20 90 40 Z" fill="${skin}"/>
+    <path d="M108 38 L124 12 Q142 22 140 48 Z" fill="${skin}"/>
+    <rect x="52" y="120" width="26" height="30" rx="11" fill="${skin}"/>
+    <rect x="118" y="120" width="26" height="30" rx="11" fill="${skin}"/>
+    <path d="M30 80 q-22 -6 -15 -23 q7 -12 15 -2" fill="none" stroke="${skin}" stroke-width="6" stroke-linecap="round"/>
+    <ellipse cx="100" cy="86" rx="72" ry="52" fill="${mad ? "#ffd3d8" : "#ffeef4"}"/>
+    ${fill}
+    <ellipse cx="100" cy="86" rx="72" ry="52" fill="none" stroke="${outline}" stroke-width="4"/>
     <rect x="80" y="38" width="40" height="7" rx="3.5" fill="#7a5a8a"/>
-    <ellipse cx="170" cy="92" rx="20" ry="16" fill="#ffb3cb" stroke="#ff8fb1" stroke-width="4"/>
+    <ellipse cx="170" cy="92" rx="20" ry="16" fill="${mad ? "#ff9ea6" : "#ffb3cb"}" stroke="${outline}" stroke-width="4"/>
     <circle cx="164" cy="92" r="3" fill="#7a5a8a"/><circle cx="176" cy="92" r="3" fill="#7a5a8a"/>
-    <circle cx="142" cy="72" r="5" fill="#4f3d5c"/><circle cx="143.6" cy="70.4" r="1.7" fill="#fff"/>
-    <ellipse cx="132" cy="92" rx="9" ry="6" fill="#ff7a9c" opacity=".4"/>
+    ${mouth}
+    ${face}
   </svg>`;
 }
 
@@ -311,13 +335,14 @@ function homeHtml() {
   const spent = idx.months[m].total;
   const left = monthBudget - spent;
   const pct = monthBudget > 0 ? (spent / monthBudget) * 100 : 0;
+  const mad = monthBudget > 0 && spent > monthBudget + 0.005;
 
   let msg;
   if (c.total <= 0) msg = "Add your yearly income in Budget and I'll split it into months for you.";
   else if (spent === 0) msg = "A fresh month. Nothing spent yet.";
   else if (pct < 70) msg = "Looking good. You're well within this month's budget.";
   else if (pct <= 100) msg = "Getting close to the monthly limit. Spend gently.";
-  else msg = `Over budget by ${fmt(spent - monthBudget)}. Let's plan the rest of the year carefully.`;
+  else msg = `Grr! Over budget by ${fmt(spent - monthBudget)}. The piggy is not happy.`;
 
   const notice = !exists
     ? `<div class="notice"><span>${carried ? `No saved plan for ${state.year} yet. Showing ${carried}'s plan.` : `No budget saved for ${state.year} yet.`}</span><button class="btn btn-soft" data-act="tab" data-tab="budget">Set up ${state.year} budget</button></div>`
@@ -377,19 +402,20 @@ function homeHtml() {
   return `
     ${notice}${sampleBtn}
     <section class="card hero">
-      <div class="hero-pig">${piggySvg(monthBudget > 0 ? left / monthBudget : 0)}</div>
+      <div class="hero-pig">${piggySvg(monthBudget > 0 ? left / monthBudget : 0, mad)}</div>
       <div class="hero-text">
         <h1>${MONTHS_LONG[m]} ${state.year}</h1>
         <p class="hero-left"><b class="${left < 0 ? "neg" : ""}">${fmt(left)}</b> ${left < 0 ? "over budget" : "left to spend"}</p>
         <div class="meter"><i class="${usedStatus(pct)}" style="width:${Math.min(pct, 100)}%"></i></div>
         <p class="hero-sub">${fmt(spent)} spent of ${fmt(monthBudget)} (yearly budget ÷ 12)</p>
-        <p class="bubble">${esc(msg)}</p>
+        <p class="bubble ${mad ? "mad" : ""}">${esc(msg)}</p>
       </div>
     </section>
     <div class="section-title"><h2>Where the money goes</h2><small>Monthly budgets come from your yearly plan</small></div>
     <section class="grid">${cards.join("") || `<div class="card empty">🎯<p>No categories yet. Add some in Budget.</p></div>`}</section>
     <div class="section-title"><h2>Who's paying</h2></div>
-    <section class="grid-2 people">${people}</section>`;
+    <section class="grid-2 people">${people}</section>
+    <button class="fab" data-act="quick-add" aria-label="Add expense">＋</button>`;
 }
 
 /* ================================================================== */
@@ -547,7 +573,7 @@ function budgetHtml() {
     <div class="brow" data-id="${esc(cat.id)}" style="--c:${esc(cat.color)}">
       <div class="brow-main">
         <input class="emoji-in" data-f="emoji" value="${esc(cat.emoji)}" maxlength="4" aria-label="Emoji">
-        <input data-f="name" value="${esc(cat.name)}" maxlength="30" placeholder="Category name" aria-label="Category name">
+        <textarea class="name-in" data-f="name" rows="1" maxlength="40" placeholder="Category name" aria-label="Category name">${esc(cat.name)}</textarea>
         <label class="pct-in"><input type="number" data-f="percent" min="0" max="100" step="0.5" value="${cat.percent}" aria-label="Percent of income"><span>%</span></label>
         <button class="icon-btn sm" data-act="del-cat" data-id="${esc(cat.id)}" aria-label="Remove category">🗑️</button>
       </div>
@@ -917,6 +943,7 @@ document.addEventListener("click", async (ev) => {
   const act = el.dataset.act;
   switch (act) {
     case "tab": setTab(el.dataset.tab); break;
+    case "quick-add": setTab("expenses"); $("#expForm")?.amount.focus({ preventScroll: true }); break;
     case "open-settings": openSettings(); break;
     case "close-settings": $("#settingsDialog").close(); break;
     case "save-settings": saveSettings(); break;
@@ -982,9 +1009,19 @@ document.addEventListener("input", (ev) => {
   const cat = d.b.categories.find((c) => c.id === row.dataset.id);
   if (!cat) return;
   if (f === "percent" || f === "p1Share") cat[f] = t.value === "" ? 0 : Number(t.value);
-  else cat[f] = t.value;
+  else cat[f] = t.value.replace(/\s+/g, " ");
+  if (t.classList.contains("name-in")) autosize(t);
   markDirty();
 });
+
+document.addEventListener("keydown", (ev) => {
+  if (ev.key === "Enter" && ev.target.classList?.contains("name-in")) {
+    ev.preventDefault();
+    ev.target.blur();
+  }
+});
+
+window.addEventListener("resize", () => $$(".name-in").forEach(autosize));
 
 document.addEventListener("change", (ev) => {
   const t = ev.target;
