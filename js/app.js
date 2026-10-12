@@ -175,11 +175,14 @@ function spendIndex(year) {
     const mi = Number(e.date.slice(5, 7)) - 1;
     if (mi < 0 || mi > 11) continue;
     const amt = Number(e.amount) || 0;
-    const who = e.paidBy === "p2" ? "p2" : "p1";
+    // "both" = paid together, counted 50:50 for each person
+    const shares = e.paidBy === "both" ? { p1: amt / 2, p2: amt / 2 } : e.paidBy === "p2" ? { p1: 0, p2: amt } : { p1: amt, p2: 0 };
     const row = (byCat[e.categoryId] ??= blank());
-    row[mi][who] += amt;
+    for (const k of PERSON_KEYS) {
+      row[mi][k] += shares[k];
+      months[mi][k] += shares[k];
+    }
     row[mi].total += amt;
-    months[mi][who] += amt;
     months[mi].total += amt;
   }
   return { byCat, months };
@@ -413,7 +416,7 @@ function homeHtml() {
     </section>
     <div class="section-title"><h2>Where the money goes</h2><small>Monthly budgets come from your yearly plan</small></div>
     <section class="grid">${cards.join("") || `<div class="card empty">🎯<p>No categories yet. Add some in Budget.</p></div>`}</section>
-    <div class="section-title"><h2>Who's paying</h2></div>
+    <div class="section-title"><h2>Who's paying</h2><small>Together expenses count 50:50 for each of you</small></div>
     <section class="grid-2 people">${people}</section>
     <button class="fab" data-act="quick-add" aria-label="Add expense">＋</button>`;
 }
@@ -434,6 +437,7 @@ function expensesHtml() {
           <fieldset class="who">
             <legend>Paid by</legend>
             ${PERSON_KEYS.map((k, i) => `<label class="who-pill"><input type="radio" name="paidBy" value="${k}" ${k === state.lastPaidBy ? "checked" : ""}><span>${esc(s.persons[i].emoji)} ${esc(s.persons[i].name)}</span></label>`).join("")}
+            <label class="who-pill"><input type="radio" name="paidBy" value="both" ${state.lastPaidBy === "both" ? "checked" : ""}><span>💞 Together · 50:50</span></label>
           </fieldset>
           <label>Note <small>(optional)</small><input type="text" name="note" maxlength="80" placeholder="e.g. weekly groceries"></label>
           <div class="form-actions">
@@ -486,7 +490,9 @@ function updateExpenseList() {
         <div class="exp-row" style="--c:${esc(cat?.color || "#ddd")}">
           <div class="exp-emoji">${esc(cat?.emoji || "✨")}</div>
           <div class="exp-main"><b>${esc(e.note || cat?.name || "Other")}</b><small>${Number(e.date.slice(8, 10))} ${MONTHS[state.month]} · ${esc(cat?.name || "Other")}</small></div>
-          <span class="chip who-${PERSON_KEYS[pi]}">${esc(s.persons[pi].emoji)} ${esc(s.persons[pi].name)}</span>
+          ${e.paidBy === "both"
+            ? `<span class="chip who-both">💞 Together · 50:50</span>`
+            : `<span class="chip who-${PERSON_KEYS[pi]}">${esc(s.persons[pi].emoji)} ${esc(s.persons[pi].name)}</span>`}
           <b class="exp-amt">${fmt(e.amount)}</b>
           <div class="row-actions">
             <button class="icon-btn sm" data-act="edit-exp" data-id="${esc(e.id)}" aria-label="Edit expense">✏️</button>
@@ -506,7 +512,7 @@ async function submitExpense(form) {
     toast("Enter a date, an amount and a category.");
     return;
   }
-  const data = { date, amount, categoryId, paidBy: fd.get("paidBy") === "p2" ? "p2" : "p1", note: String(fd.get("note") || "").trim() };
+  const data = { date, amount, categoryId, paidBy: ["p1", "p2", "both"].includes(fd.get("paidBy")) ? fd.get("paidBy") : "p1", note: String(fd.get("note") || "").trim() };
   state.lastCat = categoryId;
   state.lastPaidBy = data.paidBy;
   try {
@@ -544,7 +550,8 @@ function startEdit(id) {
   f.amount.value = e.amount;
   f.categoryId.value = e.categoryId;
   f.note.value = e.note || "";
-  $$("input[name=paidBy]", f).forEach((r) => (r.checked = r.value === (e.paidBy === "p2" ? "p2" : "p1")));
+  const who = ["p1", "p2", "both"].includes(e.paidBy) ? e.paidBy : "p1";
+  $$("input[name=paidBy]", f).forEach((r) => (r.checked = r.value === who));
   $("#expSubmit").textContent = "Save changes";
   $("#expCancel").classList.remove("hide");
   $("#expFormTitle").textContent = "Edit expense";
@@ -841,7 +848,7 @@ function exportCsv() {
   const q = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const lines = [["Date", "Category", "Paid by", "Amount", "Note"].map(q).join(",")];
   [...state.expenses].sort((a, b) => a.date.localeCompare(b.date)).forEach((e) =>
-    lines.push([e.date, cats[e.categoryId] || "Other", s.persons[e.paidBy === "p2" ? 1 : 0].name, e.amount, e.note].map(q).join(","))
+    lines.push([e.date, cats[e.categoryId] || "Other", e.paidBy === "both" ? "Together (50:50)" : s.persons[e.paidBy === "p2" ? 1 : 0].name, e.amount, e.note].map(q).join(","))
   );
   const url = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/csv" }));
   const a = Object.assign(document.createElement("a"), { href: url, download: "piggynest-expenses.csv" });
@@ -874,7 +881,7 @@ async function loadSample() {
           date: `${state.year}-${pad(mo + 1)}-${pad(day)}`,
           amount: Math.max(unit, Math.round(target / parts / unit) * unit),
           categoryId: cat.id,
-          paidBy: Math.random() < c.r1 ? "p1" : "p2",
+          paidBy: (() => { const r = Math.random(); return r < 0.25 ? "both" : r < 0.25 + 0.75 * c.r1 ? "p1" : "p2"; })(),
           note: "",
         });
       }
