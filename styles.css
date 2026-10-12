@@ -396,3 +396,14 @@ dialog { max-height: 90vh; overflow: auto; }
 
 /* shared (50:50) expenses */
 .chip.who-both { background: linear-gradient(90deg, #ffe3ec 50%, #e1f0ff 50%); }
+
+/* phones: keep the date box (and every field) inside the card */
+.form-card form { grid-template-columns: minmax(0, 1fr); }
+.form-card form > * { min-width: 0; max-width: 100%; }
+input[type="date"] {
+  -webkit-appearance: none; appearance: none;
+  display: block; width: 100%; max-width: 100%; min-width: 0;
+  min-height: 46px; text-align: left;
+}
+input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 1.4em; }
+input[type="date"]::-webkit-calendar-picker-indicator { margin-left: 4px; }
