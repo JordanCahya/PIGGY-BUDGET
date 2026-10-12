@@ -494,3 +494,14 @@ dialog input[type="date"]::-webkit-date-and-time-value { text-align: left; min-h
 }
 #app { position: relative; z-index: 1; }
 .card { background: rgba(255, 255, 255, 0.9); }
+
+/* v6: calmer background (fewer, fainter, slower) */
+@keyframes drift-a {
+  0%, 100% { transform: translate(0, 0) rotate(-3deg); }
+  50% { transform: translate(14px, 10px) rotate(3deg); }
+}
+@keyframes drift-b {
+  0%, 100% { transform: translate(0, 0) rotate(3deg); }
+  50% { transform: translate(-14px, 10px) rotate(-3deg); }
+}
+.card { background: rgba(255, 255, 255, 0.96); }
