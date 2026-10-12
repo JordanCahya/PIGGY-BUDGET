@@ -407,3 +407,13 @@ input[type="date"] {
 }
 input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 1.4em; }
 input[type="date"]::-webkit-calendar-picker-indicator { margin-left: 4px; }
+
+/* v3: stronger date-box fix for iPhone Safari */
+.form-card label { display: flex; flex-direction: column; gap: 6px; min-width: 0; max-width: 100%; }
+.form-card input, .form-card select { width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; }
+.form-card input[type="date"] {
+  inline-size: 100%; max-inline-size: 100%; overflow: hidden;
+  -webkit-min-logical-width: 0; text-align: left; text-align-last: left;
+}
+.form-card input[type="date"]::-webkit-datetime-edit { padding: 0; }
+.form-card, .form-card form { overflow-x: clip; }
