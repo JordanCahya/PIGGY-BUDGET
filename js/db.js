@@ -102,6 +102,32 @@ async function createFirebaseDb() {
     },
     saveInvestment: (id, inv) => fs.setDoc(fs.doc(investmentsCol(), id), inv, { merge: true }),
     deleteInvestment: (id) => fs.deleteDoc(fs.doc(investmentsCol(), id)),
+    async restoreAll(payload) {
+      const batch = fs.writeBatch(db);
+      if (payload.settings) {
+        batch.set(settingsRef(), payload.settings, { merge: true });
+      }
+      if (payload.budgets && typeof payload.budgets === "object") {
+        for (const [y, b] of Object.entries(payload.budgets)) {
+          batch.set(fs.doc(budgetsCol(), String(y)), b);
+        }
+      }
+      if (Array.isArray(payload.expenses)) {
+        for (const exp of payload.expenses) {
+          const docId = exp.id || fs.doc(expensesCol()).id;
+          const { id: _, ...rest } = exp;
+          batch.set(fs.doc(expensesCol(), docId), rest);
+        }
+      }
+      if (Array.isArray(payload.investments)) {
+        for (const inv of payload.investments) {
+          const docId = inv.id || fs.doc(investmentsCol()).id;
+          const { id: _, ...rest } = inv;
+          batch.set(fs.doc(investmentsCol(), docId), rest);
+        }
+      }
+      await batch.commit();
+    },
   };
 }
 
@@ -195,6 +221,37 @@ function createLocalDb() {
     },
     async deleteInvestment(id) {
       data.investments = data.investments.filter((x) => x.id !== id);
+      persist();
+    },
+    async restoreAll(payload) {
+      if (payload.settings) {
+        data.settings = { ...(data.settings || {}), ...payload.settings };
+      }
+      if (payload.budgets && typeof payload.budgets === "object") {
+        data.budgets = { ...(data.budgets || {}), ...payload.budgets };
+      }
+      if (Array.isArray(payload.expenses)) {
+        const merged = [...data.expenses];
+        for (const exp of payload.expenses) {
+          const expId = exp.id || newId();
+          const item = { ...exp, id: expId };
+          const idx = merged.findIndex((x) => x.id === expId);
+          if (idx >= 0) merged[idx] = item;
+          else merged.push(item);
+        }
+        data.expenses = merged;
+      }
+      if (Array.isArray(payload.investments)) {
+        const merged = [...data.investments];
+        for (const inv of payload.investments) {
+          const invId = inv.id || newId();
+          const item = { ...inv, id: invId };
+          const idx = merged.findIndex((x) => x.id === invId);
+          if (idx >= 0) merged[idx] = item;
+          else merged.push(item);
+        }
+        data.investments = merged;
+      }
       persist();
     },
   };
