@@ -610,3 +610,26 @@ body { background: var(--bg); background-attachment: scroll; }
 .meter i.goal-done {
   background: linear-gradient(90deg, var(--mint), #58c9a8);
 }
+
+/* ---------- backup & restore dialog section ---------- */
+.dlg-backup {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: #fff;
+  border: 1px dashed var(--line);
+}
+.dlg-backup-btns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.dlg-backup-btns button:last-child {
+  grid-column: 1 / -1;
+}
+@media (max-width: 480px) {
+  .dlg-backup-btns {
+    grid-template-columns: 1fr;
+  }
+}

@@ -97,6 +97,54 @@ def used_status(pct):
     return ""
 
 
+def create_backup_payload(state=None):
+    state = state or {}
+    return {
+        "version": 1,
+        "app": "piggynest",
+        "data": {
+            "settings": state.get("settings"),
+            "budgets": state.get("budgets", {}),
+            "expenses": state.get("expenses", []),
+            "investments": state.get("investments", []),
+        },
+    }
+
+
+def validate_backup_payload(raw):
+    import json
+    parsed = raw
+    if isinstance(raw, str):
+        try:
+            parsed = json.loads(raw)
+        except Exception:
+            return {"valid": False, "error": "Invalid JSON format"}
+    if not isinstance(parsed, dict):
+        return {"valid": False, "error": "Backup file is empty or invalid"}
+    data = parsed.get("data") if isinstance(parsed.get("data"), dict) else parsed
+    has_settings = bool(data.get("settings") and isinstance(data.get("settings"), dict))
+    has_budgets = bool(data.get("budgets") and isinstance(data.get("budgets"), dict) and not isinstance(data.get("budgets"), list))
+    has_expenses = isinstance(data.get("expenses"), list)
+    has_investments = isinstance(data.get("investments"), list)
+    if not has_settings and not has_budgets and not has_expenses and not has_investments:
+        return {"valid": False, "error": "No recognizable PiggyNest data found in backup"}
+    return {
+        "valid": True,
+        "data": {
+            "settings": data.get("settings") if has_settings else None,
+            "budgets": data.get("budgets") if has_budgets else None,
+            "expenses": data.get("expenses") if has_expenses else None,
+            "investments": data.get("investments") if has_investments else None,
+        },
+        "summary": {
+            "hasSettings": has_settings,
+            "budgetsCount": len(data.get("budgets", {})) if has_budgets else 0,
+            "expensesCount": len(data.get("expenses", [])) if has_expenses else 0,
+            "investmentsCount": len(data.get("investments", [])) if has_investments else 0,
+        },
+    }
+
+
 class TestSavingsLogic(unittest.TestCase):
     def test_no_goal(self):
         res = calculate_savings_progress(0, 3000, 2000)
@@ -188,6 +236,36 @@ class TestUsedStatus(unittest.TestCase):
         self.assertEqual(used_status(100.1), "over")
 
 
+
+class TestBackupRestore(unittest.TestCase):
+    def test_valid_json_payload(self):
+        sample = {
+            "version": 1,
+            "app": "piggynest",
+            "data": {
+                "settings": {"familyName": "Cozy Test"},
+                "budgets": {"2026": {"income": {"p1": 50000, "p2": 40000}}},
+                "expenses": [{"id": "e1", "amount": 100}],
+                "investments": [],
+            },
+        }
+        res = validate_backup_payload(sample)
+        self.assertTrue(res["valid"])
+        self.assertEqual(res["summary"]["budgetsCount"], 1)
+        self.assertEqual(res["summary"]["expensesCount"], 1)
+        self.assertTrue(res["summary"]["hasSettings"])
+
+    def test_invalid_json_string(self):
+        res = validate_backup_payload("{ broken json: true ")
+        self.assertFalse(res["valid"])
+        self.assertIn("Invalid JSON", res["error"])
+
+    def test_unrelated_data_rejected(self):
+        res = validate_backup_payload({"someRandomKey": 123})
+        self.assertFalse(res["valid"])
+        self.assertIn("No recognizable PiggyNest data", res["error"])
+
+
 class TestFileIntegrity(unittest.TestCase):
     def test_crlf_line_endings_preserved(self):
         paths = ["js/app.js", "js/calc.js", "js/savings.js", "js/db.js", "styles.css", "index.html"]
@@ -205,7 +283,7 @@ class TestFileIntegrity(unittest.TestCase):
         with open("js/app.js", "r", encoding="utf-8") as f:
             app_src = f.read()
 
-        exported_symbols = ["calc", "spendIndex", "usedStatus", "defaultBudget", "defaultCategories", "normalizeBudget", "PALETTE", "PERSON_KEYS"]
+        exported_symbols = ["calc", "spendIndex", "usedStatus", "defaultBudget", "defaultCategories", "normalizeBudget", "PALETTE", "PERSON_KEYS", "createBackupPayload", "validateBackupPayload"]
         for sym in exported_symbols:
             self.assertIn(f"export function {sym}" if sym not in ("PALETTE", "PERSON_KEYS", "usedStatus") else f"export const {sym}", calc_src)
             self.assertIn(sym, app_src)

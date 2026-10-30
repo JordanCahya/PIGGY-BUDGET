@@ -9,6 +9,8 @@ import {
   calc,
   spendIndex as calcSpendIndex,
   usedStatus,
+  createBackupPayload,
+  validateBackupPayload,
 } from "./calc.js";
 
 /* ================================================================== */
@@ -1433,7 +1435,15 @@ function openSettings() {
           <label>Emoji<input id="setEmoji${i}" value="${esc(s.persons[i].emoji)}" maxlength="4" style="text-align:center"></label>
           <label>Person ${i + 1}<input id="setName${i}" value="${esc(s.persons[i].name)}" maxlength="20"></label>
         </div>`).join("")}
-      <button class="btn btn-soft" data-act="export-csv">Download expenses (CSV)</button>
+      <div class="dlg-backup">
+        <small style="font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.5px;">Data & Backup</small>
+        <div class="dlg-backup-btns">
+          <button type="button" class="btn btn-soft" data-act="export-json">💾 Backup all data (JSON)</button>
+          <button type="button" class="btn btn-soft" data-act="restore-json-btn">📥 Restore from JSON</button>
+          <input type="file" id="restoreJsonFile" accept=".json,application/json" class="hide">
+          <button type="button" class="btn btn-soft" data-act="export-csv">📊 Download expenses (CSV)</button>
+        </div>
+      </div>
       <div class="dlg-actions">
         <button class="btn btn-ghost" data-act="close-settings">Cancel</button>
         <button class="btn btn-primary" data-act="save-settings">Save</button>
@@ -1518,6 +1528,45 @@ function exportCsv() {
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+}
+
+function exportJson() {
+  const payload = createBackupPayload(state);
+  const json = JSON.stringify(payload, null, 2);
+  const ymd = new Date().toISOString().slice(0, 10);
+  const url = URL.createObjectURL(new Blob([json], { type: "application/json" }));
+  const a = Object.assign(document.createElement("a"), { href: url, download: `piggynest-backup-${ymd}.json` });
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  toast("Backup file downloaded");
+}
+
+async function importJson(file) {
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const result = validateBackupPayload(text);
+    if (!result.valid) {
+      toast("Restore failed: " + result.error);
+      return;
+    }
+    const { summary, data } = result;
+    const items = [];
+    if (summary.hasSettings) items.push("• Family settings");
+    if (summary.budgetsCount) items.push(`• ${summary.budgetsCount} yearly plan(s)`);
+    if (summary.expensesCount) items.push(`• ${summary.expensesCount} expense(s)`);
+    if (summary.investmentsCount) items.push(`• ${summary.investmentsCount} investment(s)`);
+    const proceed = confirm(`Restore backup containing:\n${items.join("\n")}\n\nExisting items will be merged/updated. Proceed?`);
+    if (!proceed) return;
+
+    await state.db.restoreAll(data);
+    $("#settingsDialog").close();
+    toast("Backup restored successfully!");
+  } catch (err) {
+    toast("Couldn't restore: " + (err.message || err));
+  }
 }
 
 /* ================================================================== */
@@ -1635,6 +1684,8 @@ document.addEventListener("click", async (ev) => {
     case "close-settings": $("#settingsDialog").close(); break;
     case "save-settings": saveSettings(); break;
     case "export-csv": exportCsv(); break;
+    case "export-json": exportJson(); break;
+    case "restore-json-btn": $("#restoreJsonFile")?.click(); break;
     case "signout": await state.db.signOut(); break;
     case "signup": doAuth("signup"); break;
     case "forgot": {
@@ -1672,6 +1723,13 @@ document.addEventListener("click", async (ev) => {
     case "balance": balanceToHundred(); break;
     case "save-budget": saveBudget(); break;
     case "sample": await loadSample(); break;
+  }
+});
+
+document.addEventListener("change", (ev) => {
+  if (ev.target.id === "restoreJsonFile" && ev.target.files?.[0]) {
+    importJson(ev.target.files[0]);
+    ev.target.value = "";
   }
 });
 
