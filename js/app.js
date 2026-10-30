@@ -1,4 +1,5 @@
 import { createDb } from "./db.js";
+import { calculateSavingsProgress } from "./savings.js";
 
 /* ================================================================== */
 /* Helpers                                                             */
@@ -64,6 +65,7 @@ function detectCurrency() {
 const DEFAULT_SETTINGS = {
   familyName: "Our Cozy Family",
   currency: detectCurrency(),
+  savingsGoal: 0,
   persons: [
     { id: "p1", name: "Mommy", emoji: "🌸" },
     { id: "p2", name: "Daddy", emoji: "🌿" },
@@ -73,7 +75,7 @@ const DEFAULT_SETTINGS = {
 function settings() {
   const s = state.settings || {};
   const persons = Array.isArray(s.persons) && s.persons.length === 2 ? s.persons : DEFAULT_SETTINGS.persons;
-  return { ...DEFAULT_SETTINGS, ...s, persons };
+  return { ...DEFAULT_SETTINGS, ...s, savingsGoal: Number(s.savingsGoal) || 0, persons };
 }
 
 function defaultCategories() {
@@ -363,6 +365,49 @@ function homeHtml() {
   const sampleBtn = state.db.mode === "local" && !state.expenses.length && !Object.keys(state.budgets).length
     ? `<div class="notice"><span>Want a quick look around? Fill the app with sample data.</span><button class="btn btn-primary" data-act="sample">Load sample data</button></div>` : "";
 
+  const progress = calculateSavingsProgress(s.savingsGoal, monthBudget, spent);
+
+  let savingsFeedback = "";
+  if (progress.isAchieved) {
+    savingsFeedback = "🎉 Goal reached this month!";
+  } else if (spent > monthBudget && monthBudget > 0) {
+    savingsFeedback = `Over budget this month · ${fmt(progress.remaining)} to go`;
+  } else if (progress.currentSaved > 0) {
+    savingsFeedback = `${fmt(progress.remaining)} to go`;
+  } else {
+    savingsFeedback = `No savings yet this month · ${fmt(progress.remaining)} to go`;
+  }
+
+  const savingsGoalCard = !progress.hasGoal
+    ? `
+      <section class="card savings-card empty-goal">
+        <div class="savings-head">
+          <div class="savings-title"><span class="savings-badge">🎯</span><h2>Monthly Savings Goal</h2></div>
+        </div>
+        <p class="savings-prompt">Set a monthly savings goal to track your progress together.</p>
+        <div>
+          <button class="btn btn-soft sm" data-act="set-goal-prompt">🎯 Set goal</button>
+        </div>
+      </section>`
+    : `
+      <section class="card savings-card ${progress.isAchieved ? "achieved" : ""}">
+        <div class="savings-head">
+          <div class="savings-title"><span class="savings-badge">🎯</span><h2>Monthly Savings Goal</h2></div>
+          <button class="btn btn-soft sm" data-act="set-goal-prompt">Edit</button>
+        </div>
+        <div class="savings-numbers">
+          <div class="savings-amt-col">
+            <span class="savings-saved"><b>${fmt(progress.currentSaved)}</b> saved</span>
+            <small class="savings-goal-target">of ${fmt(progress.goal)} target</small>
+          </div>
+          <span class="chip ${progress.isAchieved ? "gain-pos" : ""}">${Math.round(progress.rawPct)}%</span>
+        </div>
+        <div class="meter"><i class="${progress.isAchieved ? "goal-done" : ""}" style="width:${progress.progressPct}%"></i></div>
+        <div class="savings-footer">
+          <small class="${progress.isAchieved ? "pos" : ""}">${esc(savingsFeedback)}</small>
+        </div>
+      </section>`;
+
   // category cards
   let catSpentTotal = 0;
   const cards = c.cats.map((cat) => {
@@ -423,6 +468,7 @@ function homeHtml() {
         <p class="bubble ${mad ? "mad" : ""}">${esc(msg)}</p>
       </div>
     </section>
+    ${savingsGoalCard}
     <div class="section-title"><h2>Where the money goes</h2><small>Monthly budgets come from your yearly plan</small></div>
     <section class="grid">${cards.join("") || `<div class="card empty">🎯<p>No categories yet. Add some in Budget.</p></div>`}</section>
     <div class="section-title"><h2>Who's paying</h2><small>Together expenses count 50:50 for each of you</small></div>
@@ -1451,6 +1497,7 @@ function openSettings() {
       <label>Currency
         <select id="setCurrency">${CURRENCIES.map((cur) => `<option ${cur === s.currency ? "selected" : ""}>${cur}</option>`).join("")}</select>
       </label>
+      <label>Monthly savings goal<input id="setSavingsGoal" type="number" min="0" step="any" value="${s.savingsGoal || ""}" placeholder="0"></label>
       ${PERSON_KEYS.map((k, i) => `
         <div class="dlg-people">
           <label>Emoji<input id="setEmoji${i}" value="${esc(s.persons[i].emoji)}" maxlength="4" style="text-align:center"></label>
@@ -1466,9 +1513,13 @@ function openSettings() {
 }
 
 async function saveSettings() {
+  const curr = settings();
+  const goalIn = $("#setSavingsGoal");
+  const savingsGoal = goalIn ? (Number(goalIn.value) || 0) : (curr.savingsGoal || 0);
   const next = {
     familyName: $("#setFamily").value.trim() || "Our Cozy Family",
     currency: $("#setCurrency").value,
+    savingsGoal,
     persons: PERSON_KEYS.map((k, i) => ({
       id: k,
       name: $(`#setName${i}`).value.trim() || `Person ${i + 1}`,
@@ -1483,6 +1534,43 @@ async function saveSettings() {
   }
   $("#settingsDialog").close();
   toast("Settings saved");
+}
+
+function openSavingsGoalDialog() {
+  const s = settings();
+  const dlg = $("#settingsDialog");
+  dlg.innerHTML = `
+    <div class="dlg-body">
+      <h2>🎯 Monthly savings goal</h2>
+      <p style="color:var(--ink-soft);font-size:0.92rem;margin-top:-4px;">Set how much you aim to save this month from your budget.</p>
+      <form id="savingsGoalForm" autocomplete="off">
+        <label>Monthly savings goal
+          <input id="setGoalInput" type="number" min="0" step="any" inputmode="decimal" value="${s.savingsGoal || ""}" placeholder="0" autofocus>
+        </label>
+        <div class="dlg-actions">
+          <button type="button" class="btn btn-ghost" data-act="close-settings">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save goal</button>
+        </div>
+      </form>
+    </div>`;
+  if (!dlg.open) dlg.showModal();
+  const input = $("#setGoalInput");
+  if (input) {
+    input.focus();
+    input.select();
+  }
+}
+
+async function submitSavingsGoal(form) {
+  const input = form.querySelector("#setGoalInput");
+  const amt = Number(input?.value) || 0;
+  try {
+    await state.db.saveSavingsGoal(amt);
+    $("#settingsDialog").close();
+    toast("Savings goal updated");
+  } catch (err) {
+    toast("Couldn't save: " + (err.message || err));
+  }
 }
 
 function exportCsv() {
@@ -1612,6 +1700,7 @@ document.addEventListener("click", async (ev) => {
     case "inv-edit": openInvForm(el.dataset.id); break;
     case "inv-del": deleteInvestment(el.dataset.id); break;
     case "entry-del": deleteEntry(el.dataset.id); break;
+    case "set-goal-prompt": openSavingsGoalDialog(); break;
     case "open-settings": openSettings(); break;
     case "close-settings": $("#settingsDialog").close(); break;
     case "save-settings": saveSettings(); break;
@@ -1658,6 +1747,7 @@ document.addEventListener("click", async (ev) => {
 
 document.addEventListener("submit", (ev) => {
   ev.preventDefault();
+  if (ev.target.id === "savingsGoalForm") submitSavingsGoal(ev.target);
   if (ev.target.id === "expForm") submitExpense(ev.target);
   if (ev.target.id === "authForm") doAuth("signin");
   if (ev.target.id === "invForm") submitInvForm(ev.target);

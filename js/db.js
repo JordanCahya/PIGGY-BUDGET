@@ -87,6 +87,7 @@ async function createFirebaseDb() {
     },
 
     saveSettings: (s) => fs.setDoc(settingsRef(), s),
+    saveSavingsGoal: (amount) => fs.setDoc(settingsRef(), { savingsGoal: Number(amount) || 0 }, { merge: true }),
     saveBudget: (year, b) => fs.setDoc(fs.doc(budgetsCol(), String(year)), b),
     addExpense: async (e) => {
       const ref = await fs.addDoc(expensesCol(), { ...e, createdAt: fs.serverTimestamp() });
@@ -155,6 +156,10 @@ function createLocalDb() {
 
     async saveSettings(s) {
       data.settings = s;
+      persist();
+    },
+    async saveSavingsGoal(amount) {
+      data.settings = { ...(data.settings || {}), savingsGoal: Number(amount) || 0 };
       persist();
     },
     async saveBudget(year, b) {

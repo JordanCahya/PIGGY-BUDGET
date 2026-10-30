@@ -524,3 +524,89 @@ body { background: var(--bg); background-attachment: scroll; }
   .brow-main { grid-template-columns: 52px 1fr 44px 44px; grid-template-areas: "emoji name name name" "pct pct handle del"; }
   .brow-main .drag-handle { grid-area: handle; justify-self: end; width: 44px; height: 44px; }
 }
+
+/* ================================================================== */
+/* Monthly savings goal card                                           */
+/* ================================================================== */
+.savings-card {
+  display: grid;
+  gap: 12px;
+  background: #fff;
+  border-top: 6px solid var(--sky);
+}
+.savings-card.achieved {
+  border-top-color: var(--mint);
+  background: linear-gradient(135deg, #ffffff 0%, #f4fbf8 100%);
+}
+.savings-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.savings-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.savings-title h2 {
+  font-size: 1.15rem;
+}
+.savings-badge {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  font-size: 1.3rem;
+  border-radius: 12px;
+  background: var(--sky-soft);
+}
+.savings-card.achieved .savings-badge {
+  background: var(--mint-soft);
+}
+.savings-numbers {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.savings-amt-col {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.savings-saved {
+  font-size: 1.1rem;
+}
+.savings-saved b {
+  font-family: var(--font-head);
+  font-size: 1.45rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+.savings-goal-target {
+  color: var(--ink-soft);
+  font-size: 0.95rem;
+}
+.savings-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+.savings-prompt {
+  color: var(--ink-soft);
+  font-size: 0.98rem;
+  margin: 0;
+}
+.btn.sm {
+  padding: 6px 14px;
+  font-size: 0.88rem;
+}
+.meter i.goal-done {
+  background: linear-gradient(90deg, var(--mint), #58c9a8);
+}
