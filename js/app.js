@@ -195,6 +195,12 @@ const usedStatus = (pct) => (pct > 100 ? "over" : pct >= 80 ? "warn" : "");
 /* ================================================================== */
 /* Rendering: shell                                                    */
 /* ================================================================== */
+// Navigation tabs:
+// - home: Dashboard overview with remaining monthly budget and category cards
+// - expenses: Log, view, search, edit, and delete expense transactions
+// - budget: Configure yearly income, category percentage allocations, and split ratios
+// - invest: Track investment holdings and family assets
+// - year: Annual financial charts and month-by-month spending breakdown
 const TABS = [
   ["home", "🏡", "Home"],
   ["expenses", "🧾", "Expenses"],
