@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <defs>
+    <!-- Background Gradient -->
+    <radialGradient id="bgGrad192" cx="50%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#fffafd" />
+      <stop offset="100%" stop-color="#ffe4ed" />
+    </radialGradient>
+    
+    <!-- Piggy Body Gradient -->
+    <linearGradient id="pigBody192" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffb6cb" />
+      <stop offset="100%" stop-color="#ff94b2" />
+    </linearGradient>
+
+    <!-- Ear Outer Gradient -->
+    <linearGradient id="earOuter192" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffa8c1" />
+      <stop offset="100%" stop-color="#ff85a8" />
+    </linearGradient>
+
+    <!-- Ear Inner Gradient -->
+    <linearGradient id="earInner192" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ff759d" />
+      <stop offset="100%" stop-color="#f05b85" />
+    </linearGradient>
+
+    <!-- Snout Gradient -->
+    <linearGradient id="snoutGrad192" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffd0dd" />
+      <stop offset="100%" stop-color="#ffb1c7" />
+    </linearGradient>
+
+    <!-- Coin Slot Gradient -->
+    <linearGradient id="coinGrad192" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffd54f" />
+      <stop offset="100%" stop-color="#ffb300" />
+    </linearGradient>
+
+    <filter id="softShadow192" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="3" stdDeviation="4.5" flood-color="#d65a8a" flood-opacity="0.18" />
+    </filter>
+  </defs>
+
+  <!-- Background Circle / Squircle -->
+  <rect width="192" height="192" rx="48" fill="url(#bgGrad192)" />
+
+  <g filter="url(#softShadow192)">
+    <!-- Left Ear -->
+    <path d="M 52.5 69.4 C 45 45, 60 30, 76.9 46.9 Z" fill="url(#earOuter192)" />
+    <path d="M 57 65.6 C 52.5 50.6, 63.8 39.4, 73.1 50.6 Z" fill="url(#earInner192)" opacity="0.8" />
+
+    <!-- Right Ear -->
+    <path d="M 139.5 69.4 C 147 45, 132 30, 115.1 46.9 Z" fill="url(#earOuter192)" />
+    <path d="M 135 65.6 C 139.5 50.6, 128.2 39.4, 118.9 50.6 Z" fill="url(#earInner192)" opacity="0.8" />
+
+    <!-- Coin dropping in slot -->
+    <ellipse cx="96" cy="43.1" rx="12.8" ry="4.5" fill="url(#coinGrad192)" stroke="#ffa000" stroke-width="1" />
+
+    <!-- Head / Body -->
+    <ellipse cx="96" cy="103.1" rx="58.1" ry="52.5" fill="url(#pigBody192)" />
+
+    <!-- Coin Slot on Head -->
+    <rect x="88.5" y="55.5" width="15" height="3" rx="1.5" fill="#d8527c" />
+
+    <!-- Cheeks (Blush) -->
+    <ellipse cx="63.8" cy="114.4" rx="8.2" ry="5.2" fill="#ff6594" opacity="0.35" />
+    <ellipse cx="128.2" cy="114.4" rx="8.2" ry="5.2" fill="#ff6594" opacity="0.35" />
+
+    <!-- Eyes -->
+    <!-- Left Eye -->
+    <ellipse cx="73.5" cy="93.8" rx="4.9" ry="6.4" fill="#2d2226" />
+    <ellipse cx="72" cy="91.5" rx="1.9" ry="2.2" fill="#ffffff" />
+    <circle cx="75.4" cy="96" r="1" fill="#ffffff" />
+
+    <!-- Right Eye -->
+    <ellipse cx="118.5" cy="93.8" rx="4.9" ry="6.4" fill="#2d2226" />
+    <ellipse cx="117" cy="91.5" rx="1.9" ry="2.2" fill="#ffffff" />
+    <circle cx="120.4" cy="96" r="1" fill="#ffffff" />
+
+    <!-- Snout -->
+    <ellipse cx="96" cy="114.4" rx="21.8" ry="15.8" fill="url(#snoutGrad192)" stroke="#ffa3bc" stroke-width="1.2" />
+    <!-- Nostrils -->
+    <ellipse cx="89.2" cy="114.4" rx="3.4" ry="4.9" fill="#cf436e" />
+    <ellipse cx="102.8" cy="114.4" rx="3.4" ry="4.9" fill="#cf436e" />
+  </g>
+</svg>
