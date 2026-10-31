@@ -868,6 +868,7 @@ function yearHtml() {
     <section class="card">
       <h2>Categories across the year</h2>
       <small>Yellow means a month used 80% or more of the category budget. Red means over.</small>
+      <small class="table-hint">👉 Swipe horizontally to view all months</small>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Category</th><th>Year budget</th><th>Spent</th><th>Left</th>${MONTHS.map((m) => `<th>${m}</th>`).join("")}</tr></thead>
@@ -1060,6 +1061,7 @@ function invReviewHtml() {
     </section>
     <section class="card">
       <h2>By holding</h2>
+      <small class="table-hint">👉 Swipe horizontally to view all holding details</small>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Holding</th><th>Start of year</th><th>Added</th><th>Withdrawn</th><th>Worth</th><th>Grown</th><th>Growth</th><th>CAGR</th></tr></thead>

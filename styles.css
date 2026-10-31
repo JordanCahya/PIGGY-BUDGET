@@ -28,6 +28,7 @@ html, body {
   overflow-x: hidden;
   max-width: 100vw;
   width: 100%;
+  position: relative;
   margin: 0;
   padding: 0;
 }
@@ -53,14 +54,18 @@ b { font-weight: 800; }
 :focus-visible { outline: 3px solid var(--sky); outline-offset: 2px; border-radius: 10px; }
 
 /* ---------- layout ---------- */
-#app { max-width: 1080px; margin: 0 auto; padding: 0 16px calc(110px + env(safe-area-inset-bottom, 0px)); }
-.view, .card, .grid, .grid-2, .two-col, .form-card { min-width: 0; max-width: 100%; box-sizing: border-box; }
-.view { padding-top: 6px; display: grid; gap: 18px; }
+#app { width: 100%; max-width: 1080px; margin: 0 auto; overflow-x: clip; box-sizing: border-box; padding: 0 16px calc(110px + env(safe-area-inset-bottom, 0px)); }
+.view { width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; padding-top: 6px; display: grid; gap: 18px; }
 .two-col { display: grid; gap: 18px; grid-template-columns: minmax(280px, 380px) 1fr; align-items: start; }
 .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); }
 .grid-2 { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
 
 .card {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  overflow: hidden;
   background: #fff;
   border: 2px solid #fff;
   border-radius: var(--radius);
@@ -245,12 +250,13 @@ legend { font-weight: 700; font-size: 0.9rem; padding: 0; margin-bottom: 6px; }
 .budget-line { position: absolute; left: 0; right: 0; border-top: 3px dashed var(--pink); pointer-events: none; }
 .budget-line span { position: absolute; right: 0; top: -24px; background: #fff; font-size: 0.78rem; font-weight: 800; padding: 1px 8px; border-radius: 999px; color: var(--pink-deep); }
 .chart-labels { display: grid; grid-template-columns: repeat(12, 1fr); gap: 6px; text-align: center; font-size: 0.78rem; font-weight: 700; color: var(--ink-soft); margin-top: 6px; }
-.table-wrap { width: 100%; max-width: 100%; min-width: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; display: block; margin-top: 12px; border-radius: 16px; }
+.table-wrap { width: 100% !important; max-width: 100% !important; min-width: 0 !important; overflow-x: auto !important; -webkit-overflow-scrolling: touch !important; display: block !important; margin-top: 12px; border-radius: 14px !important; }
+.table-hint { display: block; margin-top: 4px; color: var(--pink-deep); font-weight: 700; font-size: 0.8rem; }
 .card:has(.table-wrap) { overflow: hidden; }
 table { border-collapse: separate; border-spacing: 0 4px; width: 100%; min-width: 880px; font-size: 0.88rem; }
 th { text-align: right; font-weight: 800; color: var(--ink-soft); padding: 4px 8px; white-space: nowrap; }
 td { padding: 8px; text-align: right; background: #fffafc; white-space: nowrap; }
-th:first-child, td:first-child { text-align: left; position: sticky; left: 0; background: #fff; z-index: 1; }
+th:first-child, td:first-child { text-align: left; position: sticky !important; left: 0 !important; background: #fff !important; z-index: 2 !important; box-shadow: 2px 0 6px rgba(0, 0, 0, 0.08) !important; }
 td:first-child { font-weight: 800; border-radius: 12px 0 0 12px; }
 td:last-child { border-radius: 0 12px 12px 0; }
 td.warn { background: var(--butter-soft); }
@@ -281,8 +287,9 @@ dialog form, .dlg-body { display: grid; gap: 14px; }
 
 /* ---------- responsive ---------- */
 @media (max-width: 760px) {
-  #app { padding: 0 12px calc(90px + env(safe-area-inset-bottom, 0px)); }
-  .card { padding: 14px 12px; overflow: hidden; }
+  #app { width: 100%; max-width: 100vw; overflow-x: clip; box-sizing: border-box; padding: 0 12px calc(90px + env(safe-area-inset-bottom, 0px)); }
+  .view { width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; }
+  .card { width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; padding: 14px 12px; overflow: hidden; }
   .two-col { grid-template-columns: 1fr; }
   .hero { grid-template-columns: 1fr; text-align: center; }
   .hero .piggy { max-width: 130px; height: auto; margin: 0 auto; }
@@ -300,8 +307,16 @@ dialog form, .dlg-body { display: grid; gap: 14px; }
   .savings-numbers { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
   .savings-amt-col { display: flex; flex-direction: column; gap: 2px; }
   .savings-saved b { font-size: clamp(1.15rem, 5vw, 1.35rem); word-break: break-word; }
-  .stats { grid-template-columns: 1fr 1fr; gap: 8px; }
-  .stat b { font-size: clamp(1.05rem, 4.5vw, 1.3rem); word-break: break-word; }
+  .stats { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 8px !important; width: 100% !important; }
+  .stat { min-width: 0 !important; max-width: 100% !important; padding: 12px 10px !important; box-sizing: border-box !important; }
+  .stat b { font-size: clamp(0.92rem, 3.8vw, 1.25rem) !important; word-break: break-word !important; overflow-wrap: anywhere !important; line-height: 1.2 !important; }
+  .stat small { font-size: 0.72rem !important; overflow-wrap: anywhere !important; }
+  .chart { width: 100% !important; max-width: 100% !important; min-width: 0 !important; }
+  .chart-plot { display: grid !important; grid-template-columns: repeat(12, minmax(0, 1fr)) !important; gap: 2px !important; width: 100% !important; max-width: 100% !important; min-width: 0 !important; }
+  .bar-col { min-width: 0 !important; width: 100% !important; padding: 0 !important; }
+  .bar { width: 100% !important; max-width: 18px !important; }
+  .chart-labels { display: grid !important; grid-template-columns: repeat(12, minmax(0, 1fr)) !important; gap: 2px !important; width: 100% !important; max-width: 100% !important; min-width: 0 !important; font-size: 0.65rem !important; }
+  .chart-labels span { min-width: 0 !important; overflow: hidden !important; text-align: center !important; }
   .brow-derived { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; }
   .brow-derived span { display: flex; justify-content: space-between; gap: 6px; }
   .plan-top { grid-template-columns: 1fr; justify-items: center; text-align: center; }
@@ -660,12 +675,26 @@ body { background: var(--bg); background-attachment: scroll; }
     grid-template-columns: 1fr;
   }
   #app {
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: clip;
+    box-sizing: border-box;
     padding: 0 12px calc(90px + env(safe-area-inset-bottom, 0px));
+  }
+  .view {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
   }
   .grid, .grid-2 {
     grid-template-columns: 1fr;
   }
   .card {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
     padding: 14px 12px;
     overflow: hidden;
   }
@@ -753,12 +782,62 @@ body { background: var(--bg); background-attachment: scroll; }
     max-width: 60%;
   }
   .stats {
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+    width: 100% !important;
+  }
+  .stat {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    padding: 12px 10px !important;
+    box-sizing: border-box !important;
   }
   .stat b {
-    font-size: clamp(1.05rem, 4.5vw, 1.3rem);
-    word-break: break-word;
+    font-size: clamp(0.92rem, 3.8vw, 1.25rem) !important;
+    word-break: break-word !important;
+    overflow-wrap: anywhere !important;
+    line-height: 1.2 !important;
+  }
+  .stat small {
+    font-size: 0.72rem !important;
+    overflow-wrap: anywhere !important;
+  }
+  .chart {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+  .chart-plot {
+    display: grid !important;
+    grid-template-columns: repeat(12, minmax(0, 1fr)) !important;
+    gap: 2px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+  .bar-col {
+    min-width: 0 !important;
+    width: 100% !important;
+    padding: 0 !important;
+  }
+  .bar {
+    width: 100% !important;
+    max-width: 18px !important;
+  }
+  .chart-labels {
+    display: grid !important;
+    grid-template-columns: repeat(12, minmax(0, 1fr)) !important;
+    gap: 2px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    font-size: 0.65rem !important;
+  }
+  .chart-labels span {
+    min-width: 0 !important;
+    overflow: hidden !important;
+    text-align: center !important;
   }
   .brow-derived {
     display: flex;
