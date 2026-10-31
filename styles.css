@@ -24,6 +24,7 @@
 * { box-sizing: border-box; }
 [hidden], .hide { display: none !important; }
 
+html, body { overflow-x: hidden; max-width: 100vw; }
 html { -webkit-text-size-adjust: 100%; }
 
 body {
@@ -631,5 +632,72 @@ body { background: var(--bg); background-attachment: scroll; }
 @media (max-width: 480px) {
   .dlg-backup-btns {
     grid-template-columns: 1fr;
+  }
+  #app {
+    padding: 0 12px calc(90px + env(safe-area-inset-bottom, 0px));
+  }
+  .grid, .grid-2 {
+    grid-template-columns: 1fr;
+  }
+  .card {
+    padding: 14px;
+  }
+  .hero-left b {
+    font-size: clamp(1.35rem, 6vw, 1.85rem);
+    word-break: break-word;
+    line-height: 1.2;
+  }
+  .hero-sub {
+    overflow-wrap: anywhere;
+  }
+  .savings-numbers {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  .savings-amt-col {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+  .savings-saved b {
+    font-size: clamp(1.15rem, 5vw, 1.35rem);
+    word-break: break-word;
+  }
+  .cat-amounts {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  .cat-amounts span {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    gap: 6px;
+  }
+  .cat-split {
+    flex-direction: column;
+    gap: 4px;
+  }
+  .cat-split .chip {
+    font-size: 0.76rem;
+    width: 100%;
+    justify-content: space-between;
+    overflow-wrap: anywhere;
+  }
+  .stat-row {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .stat-row b {
+    word-break: break-word;
+  }
+  .exp-row {
+    grid-template-columns: 36px 1fr auto;
+    gap: 8px;
+  }
+  .exp-amt {
+    word-break: break-word;
+    text-align: right;
   }
 }
