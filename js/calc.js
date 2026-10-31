@@ -3,6 +3,29 @@
 export const PERSON_KEYS = ["p1", "p2"];
 export const PALETTE = ["#ff9ebb", "#6fd6b8", "#78b8ff", "#ffd56b", "#c4b2ff", "#ffb48a", "#9be37a", "#f5a3e4"];
 
+export const THEMES = [
+  { id: "default", name: "Cozy Pink", emoji: "🌸", color: "#ff8fb1" },
+  { id: "mocha", name: "Dark Mocha", emoji: "☕", color: "#d4a373" },
+  { id: "matcha", name: "Matcha Sage", emoji: "🍵", color: "#7cb587" },
+  { id: "lavender", name: "Lavender Dream", emoji: "🪻", color: "#a688fa" },
+  { id: "honey", name: "Honey Cream", emoji: "🍯", color: "#f4b251" },
+];
+
+export const MASCOTS = [
+  { id: "piggy", name: "Piggy Bank", emoji: "🐷" },
+  { id: "cat", name: "Mochi the Cat", emoji: "🐱" },
+  { id: "bear", name: "Boba the Bear", emoji: "🐻" },
+  { id: "bunny", name: "Bunny the Rabbit", emoji: "🐰" },
+];
+
+export function getTheme(id) {
+  return THEMES.find((t) => t.id === id) || THEMES[0];
+}
+
+export function getMascot(id) {
+  return MASCOTS.find((m) => m.id === id) || MASCOTS[0];
+}
+
 const clone = (o) => JSON.parse(JSON.stringify(o));
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 

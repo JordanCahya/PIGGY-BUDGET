@@ -88,6 +88,8 @@ async function createFirebaseDb() {
 
     saveSettings: (s) => fs.setDoc(settingsRef(), s),
     saveSavingsGoal: (amount) => fs.setDoc(settingsRef(), { savingsGoal: Number(amount) || 0 }, { merge: true }),
+    saveTheme: (theme) => fs.setDoc(settingsRef(), { theme: String(theme || "default") }, { merge: true }),
+    saveMascot: (mascot) => fs.setDoc(settingsRef(), { mascot: String(mascot || "piggy") }, { merge: true }),
     saveBudget: (year, b) => fs.setDoc(fs.doc(budgetsCol(), String(year)), b),
     addExpense: async (e) => {
       const ref = await fs.addDoc(expensesCol(), { ...e, createdAt: fs.serverTimestamp() });
@@ -105,7 +107,14 @@ async function createFirebaseDb() {
     async restoreAll(payload) {
       const batch = fs.writeBatch(db);
       if (payload.settings) {
-        batch.set(settingsRef(), payload.settings, { merge: true });
+        const settingsData = { ...payload.settings };
+        if (payload.settings.theme !== undefined) {
+          settingsData.theme = String(payload.settings.theme || "default");
+        }
+        if (payload.settings.mascot !== undefined) {
+          settingsData.mascot = String(payload.settings.mascot || "piggy");
+        }
+        batch.set(settingsRef(), settingsData, { merge: true });
       }
       if (payload.budgets && typeof payload.budgets === "object") {
         for (const [y, b] of Object.entries(payload.budgets)) {
@@ -188,6 +197,14 @@ function createLocalDb() {
       data.settings = { ...(data.settings || {}), savingsGoal: Number(amount) || 0 };
       persist();
     },
+    async saveTheme(theme) {
+      data.settings = { ...(data.settings || {}), theme: String(theme || "default") };
+      persist();
+    },
+    async saveMascot(mascot) {
+      data.settings = { ...(data.settings || {}), mascot: String(mascot || "piggy") };
+      persist();
+    },
     async saveBudget(year, b) {
       data.budgets[String(year)] = b;
       persist();
@@ -225,7 +242,14 @@ function createLocalDb() {
     },
     async restoreAll(payload) {
       if (payload.settings) {
-        data.settings = { ...(data.settings || {}), ...payload.settings };
+        const settingsData = { ...payload.settings };
+        if (payload.settings.theme !== undefined) {
+          settingsData.theme = String(payload.settings.theme || "default");
+        }
+        if (payload.settings.mascot !== undefined) {
+          settingsData.mascot = String(payload.settings.mascot || "piggy");
+        }
+        data.settings = { ...(data.settings || {}), ...settingsData };
       }
       if (payload.budgets && typeof payload.budgets === "object") {
         data.budgets = { ...(data.budgets || {}), ...payload.budgets };

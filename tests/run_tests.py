@@ -9,6 +9,33 @@ import unittest
 
 # Helpers to mirror/evaluate js/calc.js and js/savings.js pure logic in Python test harness
 
+THEMES = [
+    {"id": "default", "name": "Cozy Pink", "emoji": "🌸", "color": "#ff8fb1"},
+    {"id": "mocha", "name": "Dark Mocha", "emoji": "☕", "color": "#d4a373"},
+    {"id": "matcha", "name": "Matcha Sage", "emoji": "🍵", "color": "#7cb587"},
+    {"id": "lavender", "name": "Lavender Dream", "emoji": "🪻", "color": "#a688fa"},
+    {"id": "honey", "name": "Honey Cream", "emoji": "🍯", "color": "#f4b251"},
+]
+
+MASCOTS = [
+    {"id": "piggy", "name": "Piggy Bank", "emoji": "🐷"},
+    {"id": "cat", "name": "Mochi the Cat", "emoji": "🐱"},
+    {"id": "bear", "name": "Boba the Bear", "emoji": "🐻"},
+    {"id": "bunny", "name": "Bunny the Rabbit", "emoji": "🐰"},
+]
+
+def get_theme(theme_id):
+    for t in THEMES:
+        if t["id"] == theme_id:
+            return t
+    return THEMES[0]
+
+def get_mascot(mascot_id):
+    for m in MASCOTS:
+        if m["id"] == mascot_id:
+            return m
+    return MASCOTS[0]
+
 def calculate_savings_progress(savings_goal, month_budget, spent):
     goal = float(savings_goal or 0)
     budget = float(month_budget or 0)
@@ -264,6 +291,55 @@ class TestBackupRestore(unittest.TestCase):
         res = validate_backup_payload({"someRandomKey": 123})
         self.assertFalse(res["valid"])
         self.assertIn("No recognizable PiggyNest data", res["error"])
+
+
+class TestThemesAndMascots(unittest.TestCase):
+    def test_themes_structure_and_count(self):
+        self.assertEqual(len(THEMES), 5)
+        expected_ids = ["default", "mocha", "matcha", "lavender", "honey"]
+        self.assertEqual([t["id"] for t in THEMES], expected_ids)
+        for t in THEMES:
+            self.assertIn("id", t)
+            self.assertIn("name", t)
+            self.assertIn("emoji", t)
+            self.assertIn("color", t)
+            self.assertTrue(t["color"].startswith("#"))
+
+    def test_mascots_structure_and_count(self):
+        self.assertEqual(len(MASCOTS), 4)
+        expected_ids = ["piggy", "cat", "bear", "bunny"]
+        self.assertEqual([m["id"] for m in MASCOTS], expected_ids)
+        for m in MASCOTS:
+            self.assertIn("id", m)
+            self.assertIn("name", m)
+            self.assertIn("emoji", m)
+        self.assertEqual(get_mascot("bunny")["name"], "Bunny the Rabbit")
+
+    def test_get_theme_resolution(self):
+        self.assertEqual(get_theme("mocha")["name"], "Dark Mocha")
+        self.assertEqual(get_theme("lavender")["color"], "#a688fa")
+        # Fallback to default
+        self.assertEqual(get_theme("unknown")["id"], "default")
+        self.assertEqual(get_theme(None)["id"], "default")
+
+    def test_get_mascot_resolution(self):
+        self.assertEqual(get_mascot("cat")["name"], "Mochi the Cat")
+        self.assertEqual(get_mascot("bear")["emoji"], "🐻")
+        # Fallback to default
+        self.assertEqual(get_mascot("unknown")["id"], "piggy")
+        self.assertEqual(get_mascot(None)["id"], "piggy")
+
+    def test_calc_js_exports_themes_and_mascots(self):
+        with open("js/calc.js", "r", encoding="utf-8") as f:
+            src = f.read()
+        self.assertIn("export const THEMES =", src)
+        self.assertIn("export const MASCOTS =", src)
+        self.assertIn("export function getTheme(", src)
+        self.assertIn("export function getMascot(", src)
+        for t_id in ["default", "mocha", "matcha", "lavender", "honey"]:
+            self.assertIn(f'id: "{t_id}"', src)
+        for m_id in ["piggy", "cat", "bear", "bunny"]:
+            self.assertIn(f'id: "{m_id}"', src)
 
 
 class TestFileIntegrity(unittest.TestCase):

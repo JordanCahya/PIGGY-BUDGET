@@ -861,3 +861,102 @@ body { background: var(--bg); background-attachment: scroll; }
     text-align: right;
   }
 }
+
+/* ================================================================== */
+/* Themes & Mascot Choice Pills                                        */
+/* ================================================================== */
+[data-theme="mocha"] {
+  --bg: #1e1919;
+  --ink: #f7ede8;
+  --ink-soft: #bfaea8;
+  --pink: #d4a373;
+  --pink-deep: #bc8a5f;
+  --pink-soft: #382c26;
+  --mint: #8cb369;
+  --mint-soft: #2e3a24;
+  --sky: #a3b899;
+  --sky-soft: #2c3829;
+  --butter: #e9c46a;
+  --butter-soft: #3f3622;
+  --coral: #e76f51;
+  --line: #3d312c;
+  --shadow: 0 10px 28px rgba(0, 0, 0, 0.4);
+}
+[data-theme="mocha"] .card { background: #28211f; border-color: #382d29; }
+[data-theme="mocha"] input, [data-theme="mocha"] select, [data-theme="mocha"] textarea { background: #221c1a; color: #f7ede8; border-color: #3d312c; }
+[data-theme="mocha"] td, [data-theme="mocha"] th:first-child, [data-theme="mocha"] td:first-child { background: #28211f !important; color: #f7ede8; }
+[data-theme="mocha"] th { color: #bfaea8; }
+[data-theme="mocha"] .tab { background: #28211f; color: #bfaea8; }
+[data-theme="mocha"] .tab.active { background: #d4a373; color: #1e1919; }
+[data-theme="mocha"] dialog { background: #28211f; color: #f7ede8; }
+[data-theme="mocha"] .dlg-backup { background: #221c1a; border-color: #3d312c; }
+[data-theme="mocha"] .hero { background: linear-gradient(135deg, #28211f 0%, #2f2523 100%); }
+[data-theme="mocha"] .bubble { background: #382c26; color: #f7ede8; }
+[data-theme="mocha"] .brand-pig { background: #382c26; }
+[data-theme="mocha"] .choice-pill { background: #221c1a; color: #f7ede8; border-color: #3d312c; }
+[data-theme="mocha"] .choice-pill.active { background: #d4a373; color: #1e1919; border-color: #bc8a5f; }
+[data-theme="mocha"] .chip { background: #382c26; color: #f7ede8; }
+[data-theme="mocha"] .btn-soft { background: #382c26; color: #d4a373; box-shadow: 0 4px 0 #28201b; }
+[data-theme="mocha"] .icon-btn { background: #28211f; color: #f7ede8; box-shadow: 0 3px 0 #1e1919; }
+[data-theme="mocha"] .tabs { background: rgba(40, 33, 31, 0.95); }
+
+[data-theme="matcha"] {
+  --bg: #f4f8f5;
+  --ink: #2d4233;
+  --ink-soft: #637a6a;
+  --pink: #7cb587;
+  --pink-deep: #5e9c6b;
+  --pink-soft: #e2f0e6;
+  --line: #dbe8de;
+}
+
+[data-theme="lavender"] {
+  --bg: #f8f6fd;
+  --ink: #3c3254;
+  --ink-soft: #776e94;
+  --pink: #a688fa;
+  --pink-deep: #8c67f0;
+  --pink-soft: #ece4fd;
+  --line: #e3daf7;
+}
+
+[data-theme="honey"] {
+  --bg: #fffdf5;
+  --ink: #4d3d22;
+  --ink-soft: #8c7650;
+  --pink: #f4b251;
+  --pink-deep: #db942e;
+  --pink-soft: #fdf0db;
+  --line: #f6e6cd;
+}
+
+/* ---------- choice pills (theme & mascot selector) ---------- */
+.choice-pills {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+.choice-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 2px solid var(--line);
+  background: #fffafc;
+  color: var(--ink);
+  font: 700 0.88rem var(--font-body);
+  padding: 8px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+.choice-pill:hover {
+  border-color: var(--pink);
+}
+.choice-pill.active {
+  background: var(--pink);
+  color: #fff;
+  border-color: var(--pink-deep);
+  box-shadow: 0 3px 0 var(--pink-deep);
+}
