@@ -3,6 +3,10 @@ import { calculateSavingsProgress } from "./savings.js";
 import {
   PERSON_KEYS,
   PALETTE,
+  THEMES,
+  MASCOTS,
+  getTheme,
+  getMascot,
   defaultCategories,
   defaultBudget,
   normalizeBudget,
@@ -76,6 +80,8 @@ const DEFAULT_SETTINGS = {
   familyName: "Our Cozy Family",
   currency: detectCurrency(),
   savingsGoal: 0,
+  theme: "default",
+  mascot: "piggy",
   persons: [
     { id: "p1", name: "Mommy", emoji: "🌸" },
     { id: "p2", name: "Daddy", emoji: "🌿" },
@@ -85,7 +91,19 @@ const DEFAULT_SETTINGS = {
 function settings() {
   const s = state.settings || {};
   const persons = Array.isArray(s.persons) && s.persons.length === 2 ? s.persons : DEFAULT_SETTINGS.persons;
-  return { ...DEFAULT_SETTINGS, ...s, savingsGoal: Number(s.savingsGoal) || 0, persons };
+  return {
+    ...DEFAULT_SETTINGS,
+    ...s,
+    savingsGoal: Number(s.savingsGoal) || 0,
+    theme: s.theme || "default",
+    mascot: s.mascot || "piggy",
+    persons,
+  };
+}
+
+function applyTheme(themeId) {
+  const theme = themeId || "default";
+  document.documentElement.dataset.theme = theme;
 }
 
 
@@ -175,7 +193,7 @@ function shellHtml() {
     ${state.db.mode === "local" ? `<div class="demo-bar">🧸 Demo mode: your data stays in this browser. Add your Firebase config to sync across devices.</div>` : ""}
     <header class="topbar">
       <div class="brand">
-        <span class="brand-pig">🐷</span>
+        <span class="brand-pig">${esc(getMascot(s.mascot).emoji)}</span>
         <div><b>${esc(s.familyName)}</b><small>PiggyNest</small></div>
       </div>
       <div class="controls">
@@ -269,6 +287,153 @@ function piggySvg(level, mad = false) {
     ${mouth}
     ${face}
   </svg>`;
+}
+
+function catSvg(level, mad = false) {
+  const lv = Math.max(0, Math.min(1, level));
+  const y = (137 - lv * 104).toFixed(1);
+  const ya = (y - 7).toFixed(1);
+  const skin = mad ? "#ffb4ba" : "#fbe5d8";
+  const outline = mad ? "#f2535f" : "#e09f67";
+  const label = mad ? "Angry Mochi the Cat: this month is over budget" : `Mochi the Cat, ${Math.round(lv * 100)}% of this month's budget left`;
+  const fill = mad ? "" : `<g clip-path="url(#catBody)"><path d="M0 ${y} Q25 ${ya} 50 ${y} T100 ${y} T150 ${y} T200 ${y} V160 H0 Z" fill="${skin}"/></g>`;
+  const steam = mad ? `
+    <g class="steam"><circle cx="50" cy="4" r="6"/><circle cx="40" cy="-8" r="4"/></g>
+    <g class="steam s2"><circle cx="128" cy="0" r="6"/><circle cx="138" cy="-11" r="4"/></g>
+    <text x="156" y="46" font-size="22">💢</text>` : "";
+  const face = mad
+    ? `<ellipse cx="130" cy="92" rx="10" ry="6" fill="#f2535f" opacity=".45"/>
+       <ellipse cx="166" cy="92" rx="10" ry="6" fill="#f2535f" opacity=".45"/>
+       <circle cx="136" cy="74" r="4.6" fill="#4f3d5c"/>
+       <circle cx="160" cy="74" r="4.6" fill="#4f3d5c"/>
+       <path d="M124 64 L144 71" stroke="#4f3d5c" stroke-width="4" stroke-linecap="round"/>
+       <path d="M172 64 L152 71" stroke="#4f3d5c" stroke-width="4" stroke-linecap="round"/>
+       <path d="M148 94 q-4 6 -8 2" fill="none" stroke="#7a5a8a" stroke-width="3" stroke-linecap="round"/>
+       <path d="M148 94 q4 6 8 2" fill="none" stroke="#7a5a8a" stroke-width="3" stroke-linecap="round"/>`
+    : `<ellipse cx="128" cy="92" rx="9" ry="6" fill="#ff7a9c" opacity=".4"/>
+       <ellipse cx="168" cy="92" rx="9" ry="6" fill="#ff7a9c" opacity=".4"/>
+       <circle cx="136" cy="74" r="5" fill="#4f3d5c"/><circle cx="137.6" cy="72.4" r="1.7" fill="#fff"/>
+       <circle cx="160" cy="74" r="5" fill="#4f3d5c"/><circle cx="161.6" cy="72.4" r="1.7" fill="#fff"/>
+       <polygon points="145,86 151,86 148,90" fill="#ff7a9c"/>
+       <path d="M144 91 q4 4 4 1 q0 3 4 -1" fill="none" stroke="#7a5a8a" stroke-width="3" stroke-linecap="round"/>`;
+  const whiskers = `
+    <path d="M120 86 L98 83 M120 92 L96 95" stroke="#4f3d5c" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M176 86 L198 83 M176 92 L200 95" stroke="#4f3d5c" stroke-width="2.5" stroke-linecap="round"/>`;
+  return `
+  <svg class="piggy ${mad ? "mad" : ""}" viewBox="0 -16 220 176" role="img" aria-label="${label}">
+    <defs><clipPath id="catBody"><ellipse cx="100" cy="86" rx="72" ry="52"/></clipPath></defs>
+    ${steam}
+    <polygon points="52,56 42,12 80,36" fill="${skin}"/>
+    <polygon points="54,50 48,22 74,38" fill="#ffb4cb"/>
+    <polygon points="106,34 144,12 134,56" fill="${skin}"/>
+    <polygon points="112,38 138,22 132,50" fill="#ffb4cb"/>
+    <rect x="52" y="120" width="26" height="30" rx="11" fill="${skin}"/>
+    <rect x="118" y="120" width="26" height="30" rx="11" fill="${skin}"/>
+    <path d="M30 84 q-20 -10 -14 -28 q6 -14 16 -4" fill="none" stroke="${skin}" stroke-width="8" stroke-linecap="round"/>
+    <ellipse cx="100" cy="86" rx="72" ry="52" fill="${mad ? "#ffd3d8" : "#fff6f0"}"/>
+    ${fill}
+    <ellipse cx="100" cy="86" rx="72" ry="52" fill="none" stroke="${outline}" stroke-width="4"/>
+    <polygon points="52,56 42,12 80,36" fill="none" stroke="${outline}" stroke-width="3.5" stroke-linejoin="round"/>
+    <polygon points="106,34 144,12 134,56" fill="none" stroke="${outline}" stroke-width="3.5" stroke-linejoin="round"/>
+    <rect x="80" y="38" width="40" height="7" rx="3.5" fill="#7a5a8a"/>
+    ${whiskers}
+    ${face}
+  </svg>`;
+}
+
+function bearSvg(level, mad = false) {
+  const lv = Math.max(0, Math.min(1, level));
+  const y = (137 - lv * 104).toFixed(1);
+  const ya = (y - 7).toFixed(1);
+  const skin = mad ? "#e29587" : "#c69c6d";
+  const outline = mad ? "#d04f44" : "#996b42";
+  const label = mad ? "Angry Boba the Bear: this month is over budget" : `Boba the Bear, ${Math.round(lv * 100)}% of this month's budget left`;
+  const fill = mad ? "" : `<g clip-path="url(#bearBody)"><path d="M0 ${y} Q25 ${ya} 50 ${y} T100 ${y} T150 ${y} T200 ${y} V160 H0 Z" fill="${skin}"/></g>`;
+  const steam = mad ? `
+    <g class="steam"><circle cx="50" cy="4" r="6"/><circle cx="40" cy="-8" r="4"/></g>
+    <g class="steam s2"><circle cx="128" cy="0" r="6"/><circle cx="138" cy="-11" r="4"/></g>
+    <text x="156" y="46" font-size="22">💢</text>` : "";
+  const face = mad
+    ? `<ellipse cx="128" cy="90" rx="9" ry="6" fill="#f2535f" opacity=".45"/>
+       <circle cx="140" cy="73" r="4.6" fill="#4f3d5c"/>
+       <path d="M128 62 L148 70" stroke="#4f3d5c" stroke-width="4.5" stroke-linecap="round"/>
+       <ellipse cx="160" cy="90" rx="18" ry="14" fill="#faeed9"/>
+       <ellipse cx="162" cy="85" rx="6" ry="4" fill="#4f3d5c"/>
+       <path d="M162 89 v4 m-5 1 q5 4 10 0" fill="none" stroke="#4f3d5c" stroke-width="2.5" stroke-linecap="round"/>`
+    : `<ellipse cx="128" cy="90" rx="8" ry="5" fill="#ff7a9c" opacity=".4"/>
+       <circle cx="140" cy="72" r="5" fill="#4f3d5c"/><circle cx="141.6" cy="70.4" r="1.7" fill="#fff"/>
+       <ellipse cx="160" cy="90" rx="18" ry="14" fill="#faeed9"/>
+       <ellipse cx="162" cy="85" rx="6" ry="4" fill="#4f3d5c"/>
+       <path d="M162 89 v3 m-4 2 q4 3 8 0" fill="none" stroke="#4f3d5c" stroke-width="2.5" stroke-linecap="round"/>`;
+  return `
+  <svg class="piggy ${mad ? "mad" : ""}" viewBox="0 -16 220 176" role="img" aria-label="${label}">
+    <defs><clipPath id="bearBody"><ellipse cx="100" cy="86" rx="72" ry="52"/></clipPath></defs>
+    ${steam}
+    <circle cx="60" cy="38" r="22" fill="${skin}"/>
+    <circle cx="60" cy="38" r="13" fill="#faeed9"/>
+    <circle cx="120" cy="34" r="22" fill="${skin}"/>
+    <circle cx="120" cy="34" r="13" fill="#faeed9"/>
+    <circle cx="60" cy="38" r="22" fill="none" stroke="${outline}" stroke-width="4"/>
+    <circle cx="120" cy="34" r="22" fill="none" stroke="${outline}" stroke-width="4"/>
+    <rect x="52" y="120" width="26" height="30" rx="11" fill="${skin}"/>
+    <rect x="118" y="120" width="26" height="30" rx="11" fill="${skin}"/>
+    <circle cx="32" cy="86" r="12" fill="${skin}" stroke="${outline}" stroke-width="4"/>
+    <ellipse cx="100" cy="86" rx="72" ry="52" fill="${mad ? "#ffd7cf" : "#f5e8d8"}"/>
+    ${fill}
+    <ellipse cx="100" cy="86" rx="72" ry="52" fill="none" stroke="${outline}" stroke-width="4"/>
+    <rect x="80" y="38" width="40" height="7" rx="3.5" fill="#7a5a8a"/>
+    ${face}
+  </svg>`;
+}
+
+function bunnySvg(level, mad = false) {
+  const lv = Math.max(0, Math.min(1, level));
+  const y = (137 - lv * 104).toFixed(1);
+  const ya = (y - 7).toFixed(1);
+  const skin = mad ? "#ffb6be" : "#e6d7ed";
+  const outline = mad ? "#f2535f" : "#bca0c9";
+  const label = mad ? "Angry Bunny: this month is over budget" : `Bunny, ${Math.round(lv * 100)}% of this month's budget left`;
+  const fill = mad ? "" : `<g clip-path="url(#bunnyBody)"><path d="M0 ${y} Q25 ${ya} 50 ${y} T100 ${y} T150 ${y} T200 ${y} V160 H0 Z" fill="${skin}"/></g>`;
+  const steam = mad ? `
+    <g class="steam"><circle cx="50" cy="4" r="6"/><circle cx="40" cy="-8" r="4"/></g>
+    <g class="steam s2"><circle cx="128" cy="0" r="6"/><circle cx="138" cy="-11" r="4"/></g>
+    <text x="156" y="46" font-size="22">💢</text>` : "";
+  const face = mad
+    ? `<ellipse cx="130" cy="92" rx="10" ry="6" fill="#f2535f" opacity=".45"/>
+       <circle cx="140" cy="73" r="4.6" fill="#4f3d5c"/>
+       <path d="M128 62 L148 70" stroke="#4f3d5c" stroke-width="4.5" stroke-linecap="round"/>
+       <polygon points="160,86 166,86 163,90" fill="#f2535f"/>
+       <path d="M163 90 v3 m-3 2 q3 3 6 0" fill="none" stroke="#7a5a8a" stroke-width="2.5" stroke-linecap="round"/>`
+    : `<ellipse cx="130" cy="92" rx="9" ry="6" fill="#ff7a9c" opacity=".4"/>
+       <circle cx="140" cy="72" r="5" fill="#4f3d5c"/><circle cx="141.6" cy="70.4" r="1.7" fill="#fff"/>
+       <polygon points="160,86 166,86 163,90" fill="#ff7a9c"/>
+       <path d="M163 90 v3 m-4 2 q4 3 8 0" fill="none" stroke="#7a5a8a" stroke-width="2.5" stroke-linecap="round"/>`;
+  return `
+  <svg class="piggy ${mad ? "mad" : ""}" viewBox="0 -16 220 176" role="img" aria-label="${label}">
+    <defs><clipPath id="bunnyBody"><ellipse cx="100" cy="86" rx="72" ry="52"/></clipPath></defs>
+    ${steam}
+    <ellipse cx="68" cy="14" rx="13" ry="34" transform="rotate(-8 68 14)" fill="${skin}"/>
+    <ellipse cx="68" cy="14" rx="7" ry="24" transform="rotate(-8 68 14)" fill="#ffb4cb"/>
+    <ellipse cx="114" cy="12" rx="13" ry="34" transform="rotate(8 114 12)" fill="${skin}"/>
+    <ellipse cx="114" cy="12" rx="7" ry="24" transform="rotate(8 114 12)" fill="#ffb4cb"/>
+    <ellipse cx="68" cy="14" rx="13" ry="34" transform="rotate(-8 68 14)" fill="none" stroke="${outline}" stroke-width="3.5"/>
+    <ellipse cx="114" cy="12" rx="13" ry="34" transform="rotate(8 114 12)" fill="none" stroke="${outline}" stroke-width="3.5"/>
+    <rect x="52" y="120" width="26" height="30" rx="11" fill="${skin}"/>
+    <rect x="118" y="120" width="26" height="30" rx="11" fill="${skin}"/>
+    <circle cx="30" cy="86" r="13" fill="${skin}" stroke="${outline}" stroke-width="3.5"/>
+    <ellipse cx="100" cy="86" rx="72" ry="52" fill="${mad ? "#ffd3d8" : "#faf5fb"}"/>
+    ${fill}
+    <ellipse cx="100" cy="86" rx="72" ry="52" fill="none" stroke="${outline}" stroke-width="4"/>
+    <rect x="80" y="38" width="40" height="7" rx="3.5" fill="#7a5a8a"/>
+    ${face}
+  </svg>`;
+}
+
+function renderMascotSvg(mascotId = "piggy", level = 0, mad = false) {
+  if (mascotId === "cat") return catSvg(level, mad);
+  if (mascotId === "bear") return bearSvg(level, mad);
+  if (mascotId === "bunny") return bunnySvg(level, mad);
+  return piggySvg(level, mad);
 }
 
 function homeHtml() {
@@ -391,7 +556,7 @@ function homeHtml() {
   return `
     ${notice}${sampleBtn}
     <section class="card hero">
-      <div class="hero-pig">${piggySvg(monthBudget > 0 ? left / monthBudget : 0, mad)}</div>
+      <div class="hero-pig">${renderMascotSvg(s.mascot, monthBudget > 0 ? left / monthBudget : 0, mad)}</div>
       <div class="hero-text">
         <h1>${MONTHS_LONG[m]} ${state.year}</h1>
         <p class="hero-left"><b class="${left < 0 ? "neg" : ""}">${fmt(left)}</b> ${left < 0 ? "over budget" : "left to spend"}</p>
@@ -1432,6 +1597,16 @@ function openSettings() {
         <select id="setCurrency">${CURRENCIES.map((cur) => `<option ${cur === s.currency ? "selected" : ""}>${cur}</option>`).join("")}</select>
       </label>
       <label>Monthly savings goal<input id="setSavingsGoal" type="number" min="0" step="any" value="${s.savingsGoal || ""}" placeholder="0"></label>
+      <label>Theme
+        <div class="choice-pills" id="themePicker">
+          ${THEMES.map((t) => `<button type="button" class="choice-pill ${t.id === (s.theme || "default") ? "active" : ""}" data-theme-id="${t.id}"><span>${t.emoji}</span><span>${esc(t.name)}</span></button>`).join("")}
+        </div>
+      </label>
+      <label>Mascot
+        <div class="choice-pills" id="mascotPicker">
+          ${MASCOTS.map((m) => `<button type="button" class="choice-pill ${m.id === (s.mascot || "piggy") ? "active" : ""}" data-mascot-id="${m.id}"><span>${m.emoji}</span><span>${esc(m.name)}</span></button>`).join("")}
+        </div>
+      </label>
       ${PERSON_KEYS.map((k, i) => `
         <div class="dlg-people">
           <label>Emoji<input id="setEmoji${i}" value="${esc(s.persons[i].emoji)}" maxlength="4" style="text-align:center"></label>
@@ -1458,10 +1633,14 @@ async function saveSettings() {
   const curr = settings();
   const goalIn = $("#setSavingsGoal");
   const savingsGoal = goalIn ? (Number(goalIn.value) || 0) : (curr.savingsGoal || 0);
+  const selectedTheme = $("#themePicker .choice-pill.active")?.dataset.themeId || curr.theme || "default";
+  const selectedMascot = $("#mascotPicker .choice-pill.active")?.dataset.mascotId || curr.mascot || "piggy";
   const next = {
     familyName: $("#setFamily").value.trim() || "Our Cozy Family",
     currency: $("#setCurrency").value,
     savingsGoal,
+    theme: selectedTheme,
+    mascot: selectedMascot,
     persons: PERSON_KEYS.map((k, i) => ({
       id: k,
       name: $(`#setName${i}`).value.trim() || `Person ${i + 1}`,
@@ -1474,6 +1653,7 @@ async function saveSettings() {
     toast("Couldn't save: " + (err.message || err));
     return;
   }
+  applyTheme(selectedTheme);
   $("#settingsDialog").close();
   toast("Settings saved");
 }
@@ -1670,6 +1850,19 @@ async function doAuth(kind) {
 /* Events                                                              */
 /* ================================================================== */
 document.addEventListener("click", async (ev) => {
+  const themeBtn = ev.target.closest("[data-theme-id]");
+  if (themeBtn) {
+    $$("#themePicker .choice-pill").forEach((b) => b.classList.remove("active"));
+    themeBtn.classList.add("active");
+    applyTheme(themeBtn.dataset.themeId);
+    return;
+  }
+  const mascotBtn = ev.target.closest("[data-mascot-id]");
+  if (mascotBtn) {
+    $$("#mascotPicker .choice-pill").forEach((b) => b.classList.remove("active"));
+    mascotBtn.classList.add("active");
+    return;
+  }
   const el = ev.target.closest("[data-act]");
   if (!el) return;
   const act = el.dataset.act;
@@ -1683,7 +1876,7 @@ document.addEventListener("click", async (ev) => {
     case "entry-del": deleteEntry(el.dataset.id); break;
     case "set-goal-prompt": openSavingsGoalDialog(); break;
     case "open-settings": openSettings(); break;
-    case "close-settings": $("#settingsDialog").close(); break;
+    case "close-settings": applyTheme(settings().theme); $("#settingsDialog").close(); break;
     case "save-settings": saveSettings(); break;
     case "export-csv": exportCsv(); break;
     case "export-json": exportJson(); break;
@@ -1811,8 +2004,11 @@ document.addEventListener("change", (ev) => {
 /* Data wiring + boot                                                  */
 /* ================================================================== */
 function refreshChrome() {
+  const s = settings();
   const name = $(".brand b");
-  if (name) name.textContent = settings().familyName;
+  if (name) name.textContent = s.familyName;
+  const pig = $(".brand-pig");
+  if (pig) pig.textContent = getMascot(s.mascot).emoji;
   const ys = $("#yearSel");
   if (ys) ys.innerHTML = yearOptions();
 }
@@ -1835,6 +2031,7 @@ function onData() {
 }
 
 async function boot() {
+  applyTheme(settings().theme);
   render();
   try {
     state.db = await createDb();
@@ -1856,7 +2053,7 @@ async function boot() {
     state.dirty = false;
     if (user) {
       unsubscribe = state.db.subscribe({
-        settings: (s) => { state.settings = s; state.loaded.settings = true; onData(); },
+        settings: (s) => { state.settings = s; state.loaded.settings = true; applyTheme(s?.theme); onData(); },
         budgets: (b) => { state.budgets = b; state.loaded.budgets = true; onData(); },
         expenses: (e) => { state.expenses = e; state.loaded.expenses = true; onData(); },
         investments: (v) => { state.investments = v; onData(); },
@@ -1905,7 +2102,7 @@ function addBackground() {
 }
 addBackground();
 
-$("#settingsDialog").addEventListener("close", () => { state.invId = null; });
+$("#settingsDialog").addEventListener("close", () => { state.invId = null; applyTheme(settings().theme); });
 
 boot();
 
