@@ -166,7 +166,8 @@ const ready = () => state.loaded.settings && state.loaded.budgets && state.loade
 function render() {
   const root = $("#app");
   if (!state.db) {
-    root.innerHTML = splash("🐷", "Waking up the piggy…");
+    const mascot = getMascot(settings().mascot);
+    root.innerHTML = splash(mascot.emoji, `Waking up ${mascot.name}…`);
   } else if (!state.user) {
     root.innerHTML = authHtml();
   } else if (!ready()) {
@@ -447,13 +448,14 @@ function homeHtml() {
   const left = monthBudget - spent;
   const pct = monthBudget > 0 ? (spent / monthBudget) * 100 : 0;
   const mad = monthBudget > 0 && spent > monthBudget + 0.005;
+  const mascot = getMascot(s.mascot);
 
   let msg;
   if (c.total <= 0) msg = "Add your yearly income in Budget and I'll split it into months for you.";
   else if (spent === 0) msg = "A fresh month. Nothing spent yet.";
   else if (pct < 70) msg = "Looking good. You're well within this month's budget.";
   else if (pct <= 100) msg = "Getting close to the monthly limit. Spend gently.";
-  else msg = `Grr! Over budget by ${fmt(spent - monthBudget)}. The piggy is not happy.`;
+  else msg = `Grr! Over budget by ${fmt(spent - monthBudget)}. ${mascot.name} is not happy.`;
 
   const notice = !exists
     ? `<div class="notice"><span>${carried ? `No saved plan for ${state.year} yet. Showing ${carried}'s plan.` : `No budget saved for ${state.year} yet.`}</span><button class="btn btn-soft" data-act="tab" data-tab="budget">Set up ${state.year} budget</button></div>`
@@ -1654,6 +1656,7 @@ async function saveSettings() {
     return;
   }
   applyTheme(selectedTheme);
+  updateBackground(selectedMascot);
   $("#settingsDialog").close();
   toast("Settings saved");
 }
@@ -1861,6 +1864,7 @@ document.addEventListener("click", async (ev) => {
   if (mascotBtn) {
     $$("#mascotPicker .choice-pill").forEach((b) => b.classList.remove("active"));
     mascotBtn.classList.add("active");
+    updateBackground(mascotBtn.dataset.mascotId);
     return;
   }
   const el = ev.target.closest("[data-act]");
@@ -1876,7 +1880,7 @@ document.addEventListener("click", async (ev) => {
     case "entry-del": deleteEntry(el.dataset.id); break;
     case "set-goal-prompt": openSavingsGoalDialog(); break;
     case "open-settings": openSettings(); break;
-    case "close-settings": applyTheme(settings().theme); $("#settingsDialog").close(); break;
+    case "close-settings": applyTheme(settings().theme); updateBackground(settings().mascot); $("#settingsDialog").close(); break;
     case "save-settings": saveSettings(); break;
     case "export-csv": exportCsv(); break;
     case "export-json": exportJson(); break;
@@ -2011,6 +2015,7 @@ function refreshChrome() {
   if (pig) pig.textContent = getMascot(s.mascot).emoji;
   const ys = $("#yearSel");
   if (ys) ys.innerHTML = yearOptions();
+  updateBackground(s.mascot);
 }
 
 function onData() {
@@ -2067,17 +2072,42 @@ async function boot() {
 /* ================================================================== */
 /* Floating background                                                 */
 /* ================================================================== */
-function addBackground() {
-  if ($(".bg-float")) return;
-  const pig = (x, y, size, dur, delay, op, cls, flip) =>
-    `<svg class="fl ${cls}" viewBox="0 0 64 56" style="--x:${x}%;--y:${y}%;--s:${size}px;--d:${dur}s;--delay:${delay}s;--o:${op}"><use href="#mini-pig"${flip ? ' transform="translate(64 0) scale(-1 1)"' : ""}/></svg>`;
+function getMiniSymbolId(mascotId) {
+  const m = mascotId || settings().mascot || "piggy";
+  if (m === "cat") return "mini-cat";
+  if (m === "bear") return "mini-bear";
+  if (m === "bunny") return "mini-bunny";
+  return "mini-pig";
+}
+
+function updateBackground(mascotId) {
+  const sym = getMiniSymbolId(mascotId);
+  const bg = $(".bg-float");
+  if (!bg) {
+    addBackground(mascotId);
+    return;
+  }
+  bg.querySelectorAll("use.fl-mascot").forEach((u) => {
+    u.setAttribute("href", `#${sym}`);
+    if (u.hasAttribute("xlink:href")) u.setAttribute("xlink:href", `#${sym}`);
+  });
+}
+
+function addBackground(mascotId) {
+  if ($(".bg-float")) {
+    if (mascotId) updateBackground(mascotId);
+    return;
+  }
+  const sym = getMiniSymbolId(mascotId);
+  const mascotItem = (x, y, size, dur, delay, op, cls, flip) =>
+    `<svg class="fl ${cls}" viewBox="0 0 64 56" style="--x:${x}%;--y:${y}%;--s:${size}px;--d:${dur}s;--delay:${delay}s;--o:${op}"><use class="fl-mascot" href="#${sym}" xlink:href="#${sym}"${flip ? ' transform="translate(64 0) scale(-1 1)"' : ""}/></svg>`;
   const bit = (ch, x, y, size, dur, delay, op, cls) =>
     `<span class="fl emo ${cls}" style="--x:${x}%;--y:${y}%;--s:${size}px;--d:${dur}s;--delay:${delay}s;--o:${op}">${ch}</span>`;
   const items = [
-    pig(3, 16, 46, 80, -10, 0.35, "a", false),
-    pig(88, 12, 42, 90, -30, 0.32, "b", true),
-    pig(5, 74, 40, 85, -50, 0.3, "b", false),
-    pig(90, 72, 48, 95, -20, 0.32, "a", true),
+    mascotItem(3, 16, 46, 80, -10, 0.35, "a", false),
+    mascotItem(88, 12, 42, 90, -30, 0.32, "b", true),
+    mascotItem(5, 74, 40, 85, -50, 0.3, "b", false),
+    mascotItem(90, 72, 48, 95, -20, 0.32, "a", true),
     bit("✨", 50, 6, 18, 70, -5, 0.4, "a"),
     bit("✨", 72, 92, 18, 75, -35, 0.4, "b"),
   ];
@@ -2097,12 +2127,62 @@ function addBackground() {
         <circle cx="37" cy="26" r="2.6" fill="#4f3d5c"/><circle cx="37.9" cy="25.1" r="0.9" fill="#fff"/>
         <ellipse cx="30" cy="38" rx="5" ry="3" fill="#ff7a9c" opacity=".35"/>
       </symbol>
+      <symbol id="mini-piggy" viewBox="0 0 64 56">
+        <use href="#mini-pig"/>
+      </symbol>
+      <symbol id="mini-cat" viewBox="0 0 64 56">
+        <polygon points="12,24 10,6 26,14" fill="#fbe5d8" stroke="#e09f67" stroke-width="2.5" stroke-linejoin="round"/>
+        <polygon points="14,21 13,10 23,15" fill="#ffb4cb"/>
+        <polygon points="38,14 54,6 52,24" fill="#fbe5d8" stroke="#e09f67" stroke-width="2.5" stroke-linejoin="round"/>
+        <polygon points="41,15 51,10 50,21" fill="#ffb4cb"/>
+        <rect x="16" y="44" width="9" height="10" rx="4.5" fill="#fbe5d8" stroke="#e09f67" stroke-width="2"/>
+        <rect x="38" y="44" width="9" height="10" rx="4.5" fill="#fbe5d8" stroke="#e09f67" stroke-width="2"/>
+        <path d="M10 36 Q2 32 4 24" fill="none" stroke="#e09f67" stroke-width="3" stroke-linecap="round"/>
+        <ellipse cx="32" cy="34" rx="25" ry="19" fill="#fbe5d8" stroke="#e09f67" stroke-width="3"/>
+        <ellipse cx="28" cy="38" rx="5" ry="3" fill="#ff7a9c" opacity=".35"/>
+        <ellipse cx="50" cy="38" rx="5" ry="3" fill="#ff7a9c" opacity=".35"/>
+        <circle cx="36" cy="28" r="2.5" fill="#4f3d5c"/><circle cx="36.8" cy="27.2" r="0.9" fill="#fff"/>
+        <circle cx="48" cy="28" r="2.5" fill="#4f3d5c"/><circle cx="48.8" cy="27.2" r="0.9" fill="#fff"/>
+        <polygon points="41,33 45,33 43,35" fill="#ff7a9c"/>
+        <path d="M41 36 q2 2 2 0 q0 2 2 0" fill="none" stroke="#7a5a8a" stroke-width="1.6" stroke-linecap="round"/>
+        <path d="M30 34 L22 32 M30 37 L22 38 M54 34 L62 32 M54 37 L62 38" stroke="#4f3d5c" stroke-width="1.4" stroke-linecap="round"/>
+      </symbol>
+      <symbol id="mini-bear" viewBox="0 0 64 56">
+        <circle cx="14" cy="16" r="9" fill="#ddb892" stroke="#936639" stroke-width="2.5"/>
+        <circle cx="14" cy="16" r="5" fill="#ede0d4"/>
+        <circle cx="50" cy="16" r="9" fill="#ddb892" stroke="#936639" stroke-width="2.5"/>
+        <circle cx="50" cy="16" r="5" fill="#ede0d4"/>
+        <rect x="16" y="44" width="9" height="10" rx="4.5" fill="#ddb892"/>
+        <rect x="38" y="44" width="9" height="10" rx="4.5" fill="#ddb892"/>
+        <ellipse cx="32" cy="34" rx="25" ry="19" fill="#ddb892" stroke="#936639" stroke-width="3"/>
+        <ellipse cx="44" cy="36" rx="8" ry="6" fill="#ede0d4" stroke="#936639" stroke-width="2"/>
+        <ellipse cx="46" cy="33.5" rx="3" ry="2" fill="#582f0e"/>
+        <path d="M46 35.5 v2.5 m-2.5 0 q2.5 2 5 0" fill="none" stroke="#582f0e" stroke-width="1.5" stroke-linecap="round"/>
+        <circle cx="34" cy="27" r="2.5" fill="#3a2212"/><circle cx="34.8" cy="26.2" r="0.9" fill="#fff"/>
+        <ellipse cx="28" cy="38" rx="4.5" ry="2.8" fill="#e07a5f" opacity=".4"/>
+      </symbol>
+      <symbol id="mini-bunny" viewBox="0 0 64 56">
+        <ellipse cx="18" cy="12" rx="6.5" ry="14" transform="rotate(-12 18 12)" fill="#faf5fb" stroke="#dfa6c4" stroke-width="2.5"/>
+        <ellipse cx="18" cy="12" rx="3.5" ry="9" transform="rotate(-12 18 12)" fill="#ffb4cb"/>
+        <ellipse cx="38" cy="12" rx="6.5" ry="14" transform="rotate(12 38 12)" fill="#faf5fb" stroke="#dfa6c4" stroke-width="2.5"/>
+        <ellipse cx="38" cy="12" rx="3.5" ry="9" transform="rotate(12 38 12)" fill="#ffb4cb"/>
+        <circle cx="8" cy="36" r="6" fill="#faf5fb" stroke="#dfa6c4" stroke-width="2"/>
+        <rect x="16" y="44" width="9" height="10" rx="4.5" fill="#faf5fb" stroke="#dfa6c4" stroke-width="2"/>
+        <rect x="38" y="44" width="9" height="10" rx="4.5" fill="#faf5fb" stroke="#dfa6c4" stroke-width="2"/>
+        <ellipse cx="32" cy="34" rx="25" ry="19" fill="#faf5fb" stroke="#dfa6c4" stroke-width="3"/>
+        <circle cx="36" cy="28" r="2.5" fill="#4f3d5c"/><circle cx="36.8" cy="27.2" r="0.9" fill="#fff"/>
+        <ellipse cx="46" cy="33" rx="2" ry="1.5" fill="#ff7a9c"/>
+        <path d="M46 34.5 v2 m-2 1 q2 1.5 4 0" fill="none" stroke="#7a5a8a" stroke-width="1.4" stroke-linecap="round"/>
+        <ellipse cx="30" cy="38" rx="5" ry="3" fill="#ff7a9c" opacity=".4"/>
+        <ellipse cx="50" cy="38" rx="5" ry="3" fill="#ff7a9c" opacity=".4"/>
+        <path d="M30 35 L22 34 M30 38 L22 40" stroke="#7a5a8a" stroke-width="1.2" stroke-linecap="round"/>
+      </symbol>
     </defs></svg>${items.join("")}`;
   document.body.prepend(el);
 }
 addBackground();
 
-$("#settingsDialog").addEventListener("close", () => { state.invId = null; applyTheme(settings().theme); });
+$("#settingsDialog").addEventListener("close", () => { state.invId = null; applyTheme(settings().theme); updateBackground(settings().mascot); });
 
 boot();
 
