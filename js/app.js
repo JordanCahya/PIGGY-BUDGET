@@ -2186,8 +2186,90 @@ $("#settingsDialog").addEventListener("close", () => { state.invId = null; apply
 
 boot();
 
-if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js").catch(() => {});
+/* ================================================================== */
+/* PWA Service Worker & Auto-update Management                        */
+/* ================================================================== */
+let swDismissed = false;
+
+function showUpdatePrompt(worker) {
+  if (swDismissed || !worker) return;
+  let promptEl = $("#pwaUpdatePrompt");
+  if (!promptEl) {
+    promptEl = document.createElement("div");
+    promptEl.id = "pwaUpdatePrompt";
+    promptEl.className = "update-prompt";
+    promptEl.setAttribute("role", "alert");
+    promptEl.setAttribute("aria-live", "polite");
+    promptEl.innerHTML = `
+      <div class="update-prompt-text">
+        <span>✨</span>
+        <span>New update available!</span>
+      </div>
+      <div class="update-prompt-actions">
+        <button type="button" class="btn btn-primary sm" id="pwaReloadBtn">Refresh</button>
+        <button type="button" class="update-prompt-close" id="pwaDismissBtn" aria-label="Dismiss">✕</button>
+      </div>
+    `;
+    document.body.appendChild(promptEl);
+
+    promptEl.querySelector("#pwaReloadBtn")?.addEventListener("click", () => {
+      promptEl.classList.remove("show");
+      worker.postMessage({ type: "SKIP_WAITING" });
+    });
+
+    promptEl.querySelector("#pwaDismissBtn")?.addEventListener("click", () => {
+      swDismissed = true;
+      promptEl.classList.remove("show");
+    });
+  }
+
+  requestAnimationFrame(() => {
+    promptEl.classList.add("show");
   });
 }
+
+function initPwaUpdates() {
+  if (!("serviceWorker" in navigator)) return;
+
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (refreshing) return;
+    refreshing = true;
+    window.location.reload();
+  });
+
+  window.addEventListener("load", async () => {
+    try {
+      const reg = await navigator.serviceWorker.register("./sw.js");
+
+      // Check if a worker is already waiting
+      if (reg.waiting && navigator.serviceWorker.controller) {
+        showUpdatePrompt(reg.waiting);
+      }
+
+      // Check when a new worker is installed
+      reg.addEventListener("updatefound", () => {
+        const newWorker = reg.installing;
+        if (!newWorker) return;
+        newWorker.addEventListener("statechange", () => {
+          if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
+            showUpdatePrompt(newWorker);
+          }
+        });
+      });
+
+      // Check for updates on focus and visibility changes
+      const checkUpdate = () => {
+        reg.update().catch(() => {});
+      };
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") checkUpdate();
+      });
+      window.addEventListener("focus", checkUpdate);
+    } catch (err) {
+      console.warn("ServiceWorker registration failed:", err);
+    }
+  });
+}
+
+initPwaUpdates();

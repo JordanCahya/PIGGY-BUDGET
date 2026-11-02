@@ -960,3 +960,83 @@ body { background: var(--bg); background-attachment: scroll; }
   border-color: var(--pink-deep);
   box-shadow: 0 3px 0 var(--pink-deep);
 }
+
+/* ---------- PWA update prompt banner ---------- */
+.update-prompt {
+  position: fixed;
+  left: 50%;
+  bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+  transform: translate(-50%, 16px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 60;
+  max-width: min(92vw, 420px);
+  width: max-content;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: var(--ink);
+  padding: 8px 10px 8px 16px;
+  border-radius: 999px;
+  box-shadow: 0 10px 32px rgba(79, 61, 92, 0.2), 0 2px 6px rgba(0, 0, 0, 0.05);
+  border: 1.5px solid var(--pink-soft);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+@media (min-width: 761px) {
+  .update-prompt {
+    bottom: 24px;
+  }
+}
+.update-prompt.show {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(-50%, 0);
+}
+.update-prompt-text {
+  font-size: 0.92rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.update-prompt-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.update-prompt-close {
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  color: var(--ink-soft);
+  font-size: 1rem;
+  line-height: 1;
+  padding: 6px 8px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.update-prompt-close:hover {
+  color: var(--ink);
+  background: var(--pink-soft);
+}
+[data-theme="mocha"] .update-prompt {
+  background: rgba(45, 36, 34, 0.96);
+  border-color: #5c473f;
+  color: #f7ede8;
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.45);
+}
+[data-theme="mocha"] .update-prompt-close {
+  color: #d4a373;
+}
+[data-theme="mocha"] .update-prompt-close:hover {
+  background: #382c26;
+  color: #f7ede8;
+}
+

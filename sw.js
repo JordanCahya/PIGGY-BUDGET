@@ -21,7 +21,6 @@ self.addEventListener("install", (event) => {
     caches
       .open(CACHE_NAME)
       .then((cache) => cache.addAll(PRECACHE_ASSETS))
-      .then(() => self.skipWaiting())
   );
 });
 
@@ -43,7 +42,14 @@ self.addEventListener("activate", (event) => {
   );
 });
 
-// Fetch: Stale-While-Revalidate caching strategy with network fallback
+// Message: listen for skipWaiting command from client update prompt
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
+});
+
+// Fetch: Network-First for navigation, Stale-While-Revalidate for static assets
 self.addEventListener("fetch", (event) => {
   const req = event.request;
 
@@ -68,6 +74,52 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  const isNavigation =
+    req.mode === "navigate" ||
+    (req.headers.get("accept") && req.headers.get("accept").includes("text/html")) ||
+    url.pathname.endsWith("/") ||
+    url.pathname.endsWith("/index.html");
+
+  if (isNavigation) {
+    // Network-First strategy with timeout fallback for navigation
+    event.respondWith(
+      new Promise((resolve) => {
+        let timedOut = false;
+        const timeoutId = setTimeout(() => {
+          timedOut = true;
+          caches.match(req).then((cached) => {
+            if (cached) resolve(cached);
+            else caches.match("./index.html").then((fallback) => resolve(fallback || caches.match("./")));
+          });
+        }, 2500);
+
+        fetch(req)
+          .then((networkResponse) => {
+            clearTimeout(timeoutId);
+            if (
+              networkResponse &&
+              networkResponse.status === 200 &&
+              (networkResponse.type === "basic" || networkResponse.type === "cors")
+            ) {
+              const responseToCache = networkResponse.clone();
+              caches.open(CACHE_NAME).then((cache) => {
+                cache.put(req, responseToCache);
+              });
+            }
+            if (!timedOut) resolve(networkResponse);
+          })
+          .catch(() => {
+            clearTimeout(timeoutId);
+            caches.match(req).then((cached) => {
+              if (cached) resolve(cached);
+              else caches.match("./index.html").then((fallback) => resolve(fallback || caches.match("./")));
+            });
+          });
+      })
+    );
+    return;
+  }
+
   // Static requests: serve cached response if present, revalidate in background
   event.respondWith(
     caches.match(req).then((cachedResponse) => {
@@ -85,14 +137,8 @@ self.addEventListener("fetch", (event) => {
           }
           return networkResponse;
         })
-        .catch((err) => {
-          // If offline and request is navigation, fallback to index.html
-          if (!cachedResponse && req.mode === "navigate") {
-            return caches.match("./index.html");
-          }
-          if (!cachedResponse) {
-            throw err;
-          }
+        .catch(() => {
+          return cachedResponse;
         });
 
       return cachedResponse || fetchPromise;
