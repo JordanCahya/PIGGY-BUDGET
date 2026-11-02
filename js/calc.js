@@ -127,6 +127,70 @@ export function spendIndex(year, expenses = []) {
 
 export const usedStatus = (pct) => (pct > 100 ? "over" : pct >= 80 ? "warn" : "");
 
+export function normalizeRecurringBills(bills) {
+  if (!Array.isArray(bills)) return [];
+  return bills.map((b, i) => {
+    const day = parseInt(b?.dayOfMonth, 10);
+    const dayOfMonth = Number.isFinite(day) ? Math.min(31, Math.max(1, day)) : 1;
+    return {
+      id: String(b?.id || uid() + i),
+      name: String(b?.name ?? "Untitled Bill").trim() || "Untitled Bill",
+      amount: Math.max(0, Number(b?.amount) || 0),
+      categoryId: String(b?.categoryId || ""),
+      paidBy: b?.paidBy === "both" || b?.paidBy === "p2" ? b.paidBy : "p1",
+      dayOfMonth,
+      active: b?.active !== false,
+    };
+  });
+}
+
+export function findPendingRecurringBills(recurringBills, expenses = [], year, month) {
+  const normBills = normalizeRecurringBills(recurringBills);
+  const targetYear = Number(year);
+  const targetMonth = Number(month); // 0-indexed (0 = Jan, 11 = Dec)
+  const prefix = `${targetYear}-${String(targetMonth + 1).padStart(2, "0")}`;
+
+  const monthExpenses = (expenses || []).filter((e) => {
+    if (!e || !e.date) return false;
+    if (typeof e.date === "string" && e.date.startsWith(prefix)) return true;
+    const parts = String(e.date).split("-");
+    if (parts.length >= 2) {
+      return Number(parts[0]) === targetYear && (Number(parts[1]) - 1) === targetMonth;
+    }
+    return false;
+  });
+
+  return normBills.filter((bill) => {
+    if (!bill.active) return false;
+
+    const isLogged = monthExpenses.some((exp) => {
+      // 1. Direct match by recurringId
+      if (exp.recurringId && String(exp.recurringId) === String(bill.id)) {
+        return true;
+      }
+      const expNote = String(exp.note || "").trim().toLowerCase();
+      const expTitle = String(exp.name || exp.title || "").trim().toLowerCase();
+      const billName = String(bill.name || "").trim().toLowerCase();
+      const billCat = String(bill.categoryId || "").trim().toLowerCase();
+      const expCat = String(exp.categoryId || "").trim().toLowerCase();
+
+      // 2. Note or Title matches bill name
+      if (billName && (expNote === billName || expTitle === billName)) {
+        return true;
+      }
+
+      // 3. Matching category and bill name in note (e.g., "Netflix Subscription")
+      if (billName && expNote && expCat === billCat && expNote.includes(billName)) {
+        return true;
+      }
+
+      return false;
+    });
+
+    return !isLogged;
+  });
+}
+
 export function createBackupPayload(state = {}) {
   return {
     version: 1,
@@ -137,6 +201,7 @@ export function createBackupPayload(state = {}) {
       budgets: state.budgets || {},
       expenses: state.expenses || [],
       investments: state.investments || [],
+      recurring: state.recurring || [],
     },
   };
 }
@@ -158,8 +223,9 @@ export function validateBackupPayload(raw) {
   const hasBudgets = Boolean(data.budgets && typeof data.budgets === "object" && !Array.isArray(data.budgets));
   const hasExpenses = Array.isArray(data.expenses);
   const hasInvestments = Array.isArray(data.investments);
+  const hasRecurring = Array.isArray(data.recurring);
 
-  if (!hasSettings && !hasBudgets && !hasExpenses && !hasInvestments) {
+  if (!hasSettings && !hasBudgets && !hasExpenses && !hasInvestments && !hasRecurring) {
     return { valid: false, error: "No recognizable PiggyNest data found in backup" };
   }
 
@@ -170,12 +236,14 @@ export function validateBackupPayload(raw) {
       budgets: hasBudgets ? data.budgets : null,
       expenses: hasExpenses ? data.expenses : null,
       investments: hasInvestments ? data.investments : null,
+      recurring: hasRecurring ? data.recurring : null,
     },
     summary: {
       hasSettings,
       budgetsCount: hasBudgets ? Object.keys(data.budgets).length : 0,
       expensesCount: hasExpenses ? data.expenses.length : 0,
       investmentsCount: hasInvestments ? data.investments.length : 0,
+      recurringCount: hasRecurring ? data.recurring.length : 0,
     },
   };
 }

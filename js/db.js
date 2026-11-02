@@ -47,6 +47,7 @@ async function createFirebaseDb() {
   const budgetsCol = () => fs.collection(db, "families", uid, "budgets");
   const expensesCol = () => fs.collection(db, "families", uid, "expenses");
   const investmentsCol = () => fs.collection(db, "families", uid, "investments");
+  const recurringCol = () => fs.collection(db, "families", uid, "recurring");
 
   return {
     mode: "firebase",
@@ -62,7 +63,7 @@ async function createFirebaseDb() {
     resetPassword: (email) => authMod.sendPasswordResetEmail(auth, email),
     signOut: () => authMod.signOut(auth),
 
-    subscribe({ settings, budgets, expenses, investments, error }) {
+    subscribe({ settings, budgets, expenses, investments, recurring, error }) {
       const onErr = (e) => error && error(e);
       const u1 = fs.onSnapshot(settingsRef(), (snap) => settings(snap.exists() ? snap.data() : null), onErr);
       const u2 = fs.onSnapshot(
@@ -78,11 +79,15 @@ async function createFirebaseDb() {
       const u4 = investments
         ? fs.onSnapshot(investmentsCol(), (qs) => investments(qs.docs.map((d) => ({ id: d.id, ...d.data() }))), onErr)
         : () => {};
+      const u5 = recurring
+        ? fs.onSnapshot(recurringCol(), (qs) => recurring(qs.docs.map((d) => ({ id: d.id, ...d.data() }))), onErr)
+        : () => {};
       return () => {
         u1();
         u2();
         u3();
         u4();
+        u5();
       };
     },
 
@@ -104,6 +109,13 @@ async function createFirebaseDb() {
     },
     saveInvestment: (id, inv) => fs.setDoc(fs.doc(investmentsCol(), id), inv, { merge: true }),
     deleteInvestment: (id) => fs.deleteDoc(fs.doc(investmentsCol(), id)),
+
+    addRecurring: async (bill) => {
+      const ref = await fs.addDoc(recurringCol(), { ...bill, createdAt: fs.serverTimestamp() });
+      return ref.id;
+    },
+    updateRecurring: (id, bill) => fs.setDoc(fs.doc(recurringCol(), id), bill, { merge: true }),
+    deleteRecurring: (id) => fs.deleteDoc(fs.doc(recurringCol(), id)),
     async restoreAll(payload) {
       const batch = fs.writeBatch(db);
       if (payload.settings) {
@@ -135,6 +147,13 @@ async function createFirebaseDb() {
           batch.set(fs.doc(investmentsCol(), docId), rest);
         }
       }
+      if (Array.isArray(payload.recurring)) {
+        for (const item of payload.recurring) {
+          const docId = item.id || fs.doc(recurringCol()).id;
+          const { id: _, ...rest } = item;
+          batch.set(fs.doc(recurringCol(), docId), rest);
+        }
+      }
       await batch.commit();
     },
   };
@@ -152,7 +171,8 @@ function createLocalDb() {
       return {};
     }
   };
-  const data = { settings: null, budgets: {}, expenses: [], investments: [], ...load() };
+  const data = { settings: null, budgets: {}, expenses: [], investments: [], recurring: [], ...load() };
+  if (!Array.isArray(data.recurring)) data.recurring = [];
   const subs = new Set();
   const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
@@ -177,12 +197,13 @@ function createLocalDb() {
     async resetPassword() {},
     async signOut() {},
 
-    subscribe({ settings, budgets, expenses, investments }) {
+    subscribe({ settings, budgets, expenses, investments, recurring }) {
       const notify = () => {
         settings(data.settings);
         budgets({ ...data.budgets });
         expenses(data.expenses.map((e) => ({ ...e })));
         if (investments) investments(JSON.parse(JSON.stringify(data.investments || [])));
+        if (recurring) recurring(data.recurring.map((r) => ({ ...r })));
       };
       subs.add(notify);
       queueMicrotask(notify);
@@ -240,6 +261,22 @@ function createLocalDb() {
       data.investments = data.investments.filter((x) => x.id !== id);
       persist();
     },
+
+    async addRecurring(bill) {
+      const id = newId();
+      data.recurring.push({ ...bill, id });
+      persist();
+      return id;
+    },
+    async updateRecurring(id, bill) {
+      const i = data.recurring.findIndex((x) => x.id === id);
+      if (i >= 0) data.recurring[i] = { ...data.recurring[i], ...bill, id };
+      persist();
+    },
+    async deleteRecurring(id) {
+      data.recurring = data.recurring.filter((x) => x.id !== id);
+      persist();
+    },
     async restoreAll(payload) {
       if (payload.settings) {
         const settingsData = { ...payload.settings };
@@ -275,6 +312,17 @@ function createLocalDb() {
           else merged.push(item);
         }
         data.investments = merged;
+      }
+      if (Array.isArray(payload.recurring)) {
+        const merged = [...data.recurring];
+        for (const item of payload.recurring) {
+          const recId = item.id || newId();
+          const recItem = { ...item, id: recId };
+          const idx = merged.findIndex((x) => x.id === recId);
+          if (idx >= 0) merged[idx] = recItem;
+          else merged.push(recItem);
+        }
+        data.recurring = merged;
       }
       persist();
     },

@@ -1040,3 +1040,222 @@ body { background: var(--bg); background-attachment: scroll; }
   color: #f7ede8;
 }
 
+/* ---------- Recurring Bills & Notice Banner ---------- */
+.notice-recurring {
+  background: linear-gradient(135deg, var(--sky-soft) 0%, #edf5ff 100%);
+  border: 1.5px solid #d4e7fc;
+  box-shadow: 0 4px 16px rgba(120, 184, 255, 0.12);
+}
+.notice-recurring-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.notice-recurring-info b {
+  color: var(--ink);
+  font-size: 0.98rem;
+}
+.notice-recurring-info small {
+  color: var(--ink-soft);
+  font-size: 0.88rem;
+}
+.notice-recurring-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.rec-dlg-body {
+  max-height: 85vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.rec-header h2 {
+  font-size: 1.35rem;
+}
+.rec-header small {
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+}
+.rec-form {
+  background: var(--bg);
+  border: 1.5px solid var(--line);
+  border-radius: 18px;
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+}
+.rec-form-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.rec-form-head h3 {
+  font-size: 1.05rem;
+  color: var(--ink);
+}
+.rec-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+.rec-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+.rec-list-section {
+  display: grid;
+  gap: 10px;
+  margin-top: 8px;
+}
+.rec-list-section h3 {
+  font-size: 1.05rem;
+  color: var(--ink);
+}
+.rec-list {
+  display: grid;
+  gap: 8px;
+}
+.rec-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: #fff;
+  border: 1.5px solid var(--line);
+  box-shadow: 0 2px 8px rgba(79, 61, 92, 0.05);
+  transition: all 0.15s ease;
+}
+.rec-item.editing {
+  border-color: var(--pink);
+  background: var(--pink-soft);
+}
+.rec-item.paused {
+  opacity: 0.65;
+  background: #faf7f8;
+}
+.rec-item-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+.rec-item-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.rec-cat-emoji {
+  font-size: 1.15rem;
+  line-height: 1;
+}
+.rec-item-top b {
+  font-size: 0.98rem;
+  color: var(--ink);
+}
+.rec-amt {
+  font-weight: 800;
+  color: var(--ink);
+  margin-left: auto;
+  font-size: 1rem;
+}
+.rec-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.84rem;
+  color: var(--ink-soft);
+  flex-wrap: wrap;
+}
+.rec-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.rec-toggle-btn {
+  cursor: pointer;
+  border: 0;
+  transition: opacity 0.15s ease, transform 0.08s ease;
+  user-select: none;
+}
+.rec-toggle-btn:active {
+  transform: scale(0.96);
+}
+.rec-active {
+  background: var(--mint-soft);
+  color: #1a6e54;
+}
+.rec-paused {
+  background: #eee6eb;
+  color: #8c7885;
+}
+.empty-recs {
+  text-align: center;
+  padding: 24px 16px;
+  border-radius: 16px;
+  border: 2px dashed var(--line);
+  color: var(--ink-soft);
+}
+.empty-recs p {
+  font-weight: 700;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+@media (max-width: 500px) {
+  .rec-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .rec-item-actions {
+    align-self: flex-end;
+  }
+}
+[data-theme="mocha"] .notice-recurring {
+  background: #2a2220;
+  border-color: #423632;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+}
+[data-theme="mocha"] .notice-recurring-info b {
+  color: #f7ede8;
+}
+[data-theme="mocha"] .notice-recurring-info small {
+  color: #d4a373;
+}
+[data-theme="mocha"] .rec-form {
+  background: #221c1a;
+  border-color: #3d312c;
+}
+[data-theme="mocha"] .rec-item {
+  background: #28211f;
+  border-color: #3d312c;
+}
+[data-theme="mocha"] .rec-item.paused {
+  background: #201a18;
+}
+[data-theme="mocha"] .rec-item-top b,
+[data-theme="mocha"] .rec-amt,
+[data-theme="mocha"] .rec-form-head h3,
+[data-theme="mocha"] .rec-list-section h3 {
+  color: #f7ede8;
+}
+[data-theme="mocha"] .rec-active {
+  background: #1e3a2b;
+  color: #7cb587;
+}
+[data-theme="mocha"] .rec-paused {
+  background: #332926;
+  color: #ab958d;
+}
+[data-theme="mocha"] .empty-recs {
+  border-color: #3d312c;
+}
+[data-theme="mocha"] .empty-recs p {
+  color: #f7ede8;
+}
+

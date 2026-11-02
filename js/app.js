@@ -10,6 +10,8 @@ import {
   defaultCategories,
   defaultBudget,
   normalizeBudget,
+  normalizeRecurringBills,
+  findPendingRecurringBills,
   calc,
   spendIndex as calcSpendIndex,
   usedStatus,
@@ -54,7 +56,9 @@ const state = {
   expenses: [],
   investments: [],
   invId: null,
-  loaded: { settings: false, budgets: false, expenses: false },
+  recurring: [],
+  recId: null,
+  loaded: { settings: false, budgets: false, expenses: false, recurring: false },
   tab: "home",
   year: now.getFullYear(),
   month: now.getMonth(),
@@ -161,7 +165,7 @@ const TABS = [
   ["year", "📅", "Year"],
 ];
 
-const ready = () => state.loaded.settings && state.loaded.budgets && state.loaded.expenses;
+const ready = () => state.loaded.settings && state.loaded.budgets && state.loaded.expenses && state.loaded.recurring;
 
 function render() {
   const root = $("#app");
@@ -464,6 +468,21 @@ function homeHtml() {
   const sampleBtn = state.db.mode === "local" && !state.expenses.length && !Object.keys(state.budgets).length
     ? `<div class="notice"><span>Want a quick look around? Fill the app with sample data.</span><button class="btn btn-primary" data-act="sample">Load sample data</button></div>` : "";
 
+  const pending = findPendingRecurringBills(state.recurring, state.expenses, state.year, state.month);
+  const totalPending = pending.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+  const recurringBanner = pending.length > 0
+    ? `
+      <div class="notice notice-recurring">
+        <div class="notice-recurring-info">
+          <b>📅 ${pending.length} recurring bill${pending.length > 1 ? "s" : ""} pending for this month</b>
+          <small>Total ${fmt(totalPending)} (${pending.map((p) => esc(p.name)).join(", ")})</small>
+        </div>
+        <div class="notice-recurring-actions">
+          <button class="btn btn-primary sm" data-act="log-recurring-all">Log all bills</button>
+        </div>
+      </div>`
+    : "";
+
   const progress = calculateSavingsProgress(s.savingsGoal, monthBudget, spent);
 
   let savingsFeedback = "";
@@ -556,7 +575,7 @@ function homeHtml() {
   }).join("");
 
   return `
-    ${notice}${sampleBtn}
+    ${notice}${sampleBtn}${recurringBanner}
     <section class="card hero">
       <div class="hero-pig">${renderMascotSvg(s.mascot, monthBudget > 0 ? left / monthBudget : 0, mad)}</div>
       <div class="hero-text">
@@ -583,7 +602,10 @@ function expensesHtml() {
   return `
     <div class="two-col">
       <section class="card form-card">
-        <h2 id="expFormTitle">Add an expense</h2>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
+          <h2 id="expFormTitle" style="margin:0;">Add an expense</h2>
+          <button type="button" class="btn btn-soft sm" data-act="open-recurring">📅 Recurring bills</button>
+        </div>
         <form id="expForm" autocomplete="off">
           <label>Date<input type="date" name="date" required></label>
           <label>Amount<input type="number" name="amount" min="0" step="any" inputmode="decimal" placeholder="0" required></label>
@@ -1615,8 +1637,9 @@ function openSettings() {
           <label>Person ${i + 1}<input id="setName${i}" value="${esc(s.persons[i].name)}" maxlength="20"></label>
         </div>`).join("")}
       <div class="dlg-backup">
-        <small style="font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.5px;">Data & Backup</small>
+        <small style="font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.5px;">Recurring & Backup</small>
         <div class="dlg-backup-btns">
+          <button type="button" class="btn btn-soft" data-act="open-recurring">📅 Manage recurring bills</button>
           <button type="button" class="btn btn-soft" data-act="export-json">💾 Backup all data (JSON)</button>
           <button type="button" class="btn btn-soft" data-act="restore-json-btn">📥 Restore from JSON</button>
           <input type="file" id="restoreJsonFile" accept=".json,application/json" class="hide">
@@ -1743,6 +1766,7 @@ async function importJson(file) {
     if (summary.budgetsCount) items.push(`• ${summary.budgetsCount} yearly plan(s)`);
     if (summary.expensesCount) items.push(`• ${summary.expensesCount} expense(s)`);
     if (summary.investmentsCount) items.push(`• ${summary.investmentsCount} investment(s)`);
+    if (summary.recurringCount) items.push(`• ${summary.recurringCount} recurring bill(s)`);
     const proceed = confirm(`Restore backup containing:\n${items.join("\n")}\n\nExisting items will be merged/updated. Proceed?`);
     if (!proceed) return;
 
@@ -1850,6 +1874,211 @@ async function doAuth(kind) {
 }
 
 /* ================================================================== */
+/* Recurring bills management dialog                                   */
+/* ================================================================== */
+function openRecurringDialog(editId = null) {
+  state.recId = editId;
+  const s = settings();
+  const dlg = $("#settingsDialog");
+  const cats = budgetFor(state.year).b.categories;
+  const bills = normalizeRecurringBills(state.recurring);
+  const editingBill = editId ? bills.find((b) => b.id === editId) : null;
+
+  const billRows = bills.length
+    ? bills
+        .map((b) => {
+          const cat = cats.find((c) => c.id === b.categoryId) || { emoji: "✨", name: "Other" };
+          const pi = b.paidBy === "p2" ? 1 : 0;
+          const whoLabel = b.paidBy === "both" ? "💞 Together" : `${esc(s.persons[pi].emoji)} ${esc(s.persons[pi].name)}`;
+          const dayLabel = `Day ${b.dayOfMonth || 1}`;
+          const isEditing = editingBill && editingBill.id === b.id;
+
+          return `
+            <div class="rec-item ${b.active ? "" : "paused"} ${isEditing ? "editing" : ""}">
+              <div class="rec-item-main">
+                <div class="rec-item-top">
+                  <span class="rec-cat-emoji">${esc(cat.emoji)}</span>
+                  <b>${esc(b.name)}</b>
+                  <span class="rec-amt">${fmt(b.amount)}</span>
+                </div>
+                <div class="rec-item-meta">
+                  <span>${esc(cat.name)}</span>
+                  <span>·</span>
+                  <span>${whoLabel}</span>
+                  <span>·</span>
+                  <span>${dayLabel}</span>
+                </div>
+              </div>
+              <div class="rec-item-actions">
+                <button type="button" class="chip rec-toggle-btn ${b.active ? "rec-active" : "rec-paused"}" data-act="toggle-recurring" data-id="${esc(b.id)}">
+                  ${b.active ? "Active" : "Paused"}
+                </button>
+                <button type="button" class="icon-btn sm" data-act="edit-recurring" data-id="${esc(b.id)}" title="Edit bill">✏️</button>
+                <button type="button" class="icon-btn sm" data-act="del-recurring" data-id="${esc(b.id)}" title="Delete bill">🗑️</button>
+              </div>
+            </div>`;
+        })
+        .join("")
+    : `<div class="empty-recs"><p>No recurring bills configured yet.</p><small>Add rent, subscriptions, or utilities below to track them seamlessly every month.</small></div>`;
+
+  dlg.innerHTML = `
+    <div class="dlg-body rec-dlg-body">
+      <div class="rec-header">
+        <div>
+          <h2>📅 Recurring Bills</h2>
+          <small>Automate your monthly subscriptions and fixed expenses</small>
+        </div>
+      </div>
+
+      <form id="recurringForm" class="rec-form" data-id="${esc(editingBill?.id || "")}">
+        <div class="rec-form-head">
+          <h3>${editingBill ? "✏️ Edit recurring bill" : "＋ Add recurring bill"}</h3>
+          ${editingBill ? `<button type="button" class="btn btn-ghost sm" data-act="cancel-rec-edit">Cancel</button>` : ""}
+        </div>
+        <div class="rec-form-grid">
+          <label>Bill name
+            <input name="name" type="text" maxlength="60" required placeholder="e.g. Netflix, Rent, Internet" value="${esc(editingBill?.name || "")}">
+          </label>
+          <label>Amount
+            <input name="amount" type="number" min="0" step="any" inputmode="decimal" required placeholder="0" value="${editingBill ? editingBill.amount : ""}">
+          </label>
+          <label>Category
+            <select name="categoryId" required>
+              ${cats.map((c) => `<option value="${esc(c.id)}" ${editingBill?.categoryId === c.id ? "selected" : ""}>${esc(c.emoji)} ${esc(c.name)}</option>`).join("")}
+            </select>
+          </label>
+          <label>Paid by
+            <select name="paidBy">
+              <option value="p1" ${editingBill?.paidBy === "p1" ? "selected" : ""}>${esc(s.persons[0].emoji)} ${esc(s.persons[0].name)}</option>
+              <option value="p2" ${editingBill?.paidBy === "p2" ? "selected" : ""}>${esc(s.persons[1].emoji)} ${esc(s.persons[1].name)}</option>
+              <option value="both" ${!editingBill || editingBill.paidBy === "both" ? "selected" : ""}>💞 Together</option>
+            </select>
+          </label>
+          <label>Day of month (1–31)
+            <input name="dayOfMonth" type="number" min="1" max="31" required value="${editingBill ? editingBill.dayOfMonth : 1}">
+          </label>
+        </div>
+        <div class="rec-form-actions">
+          <button type="submit" class="btn btn-primary">${editingBill ? "Save changes" : "Add bill"}</button>
+        </div>
+      </form>
+
+      <div class="rec-list-section">
+        <h3>Configured bills (${bills.length})</h3>
+        <div class="rec-list">
+          ${billRows}
+        </div>
+      </div>
+
+      <div class="dlg-actions">
+        <button type="button" class="btn btn-soft" data-act="close-settings">Done</button>
+      </div>
+    </div>`;
+
+  if (!dlg.open) dlg.showModal();
+}
+
+function refreshRecurringDialog() {
+  if ($("#recurringForm")) {
+    openRecurringDialog(state.recId);
+  }
+}
+
+async function submitRecurringForm(form) {
+  const fd = new FormData(form);
+  const id = form.dataset.id;
+  const name = String(fd.get("name") || "").trim();
+  const amount = Number(fd.get("amount")) || 0;
+  const categoryId = String(fd.get("categoryId") || "");
+  const paidBy = ["p1", "p2", "both"].includes(fd.get("paidBy")) ? fd.get("paidBy") : "both";
+  const dayRaw = parseInt(fd.get("dayOfMonth"), 10);
+  const dayOfMonth = Number.isFinite(dayRaw) ? Math.min(31, Math.max(1, dayRaw)) : 1;
+
+  if (!name) {
+    toast("Please provide a bill name");
+    return;
+  }
+  if (amount <= 0) {
+    toast("Please enter a valid amount");
+    return;
+  }
+
+  const payload = {
+    name,
+    amount,
+    categoryId,
+    paidBy,
+    dayOfMonth,
+    active: true,
+  };
+
+  try {
+    if (id) {
+      const existing = state.recurring.find((r) => r.id === id);
+      await state.db.updateRecurring(id, { ...payload, active: existing ? existing.active !== false : true });
+      toast("Recurring bill updated");
+    } else {
+      await state.db.addRecurring(payload);
+      toast("Recurring bill added");
+    }
+    state.recId = null;
+    openRecurringDialog(null);
+  } catch (err) {
+    toast("Couldn't save bill: " + (err.message || err));
+  }
+}
+
+async function toggleRecurring(id) {
+  const bill = state.recurring.find((r) => r.id === id);
+  if (!bill) return;
+  const nextActive = bill.active === false;
+  try {
+    await state.db.updateRecurring(id, { active: nextActive });
+    toast(nextActive ? "Bill activated" : "Bill paused");
+    openRecurringDialog(state.recId);
+  } catch (err) {
+    toast("Couldn't update status: " + (err.message || err));
+  }
+}
+
+async function deleteRecurring(id) {
+  if (!confirm("Delete this recurring bill?")) return;
+  try {
+    await state.db.deleteRecurring(id);
+    toast("Recurring bill deleted");
+    if (state.recId === id) state.recId = null;
+    openRecurringDialog(state.recId);
+  } catch (err) {
+    toast("Couldn't delete bill: " + (err.message || err));
+  }
+}
+
+async function logAllPendingRecurring() {
+  const pending = findPendingRecurringBills(state.recurring, state.expenses, state.year, state.month);
+  if (!pending.length) {
+    toast("No pending recurring bills for this month");
+    return;
+  }
+  try {
+    for (const b of pending) {
+      const d = Math.min(Math.max(1, Number(b.dayOfMonth) || 1), 28);
+      const date = `${state.year}-${pad(state.month + 1)}-${pad(d)}`;
+      await state.db.addExpense({
+        date,
+        amount: Number(b.amount) || 0,
+        categoryId: b.categoryId || "",
+        paidBy: b.paidBy || "p1",
+        note: b.name || "Recurring bill",
+        recurringId: b.id,
+      });
+    }
+    toast(`Logged ${pending.length} recurring bill${pending.length > 1 ? "s" : ""} for this month`);
+  } catch (err) {
+    toast("Couldn't log bills: " + (err.message || err));
+  }
+}
+
+/* ================================================================== */
 /* Events                                                              */
 /* ================================================================== */
 document.addEventListener("click", async (ev) => {
@@ -1873,6 +2102,12 @@ document.addEventListener("click", async (ev) => {
   switch (act) {
     case "tab": setTab(el.dataset.tab); break;
     case "quick-add": setTab("expenses"); $("#expForm")?.amount.focus({ preventScroll: true }); break;
+    case "log-recurring-all": await logAllPendingRecurring(); break;
+    case "open-recurring": openRecurringDialog(); break;
+    case "edit-recurring": openRecurringDialog(el.dataset.id); break;
+    case "cancel-rec-edit": openRecurringDialog(null); break;
+    case "toggle-recurring": await toggleRecurring(el.dataset.id); break;
+    case "del-recurring": await deleteRecurring(el.dataset.id); break;
     case "inv-new": if (!needDbUpdate()) openInvForm(); break;
     case "inv-open": renderInvDialog(el.dataset.id, el.dataset.kind || "add"); break;
     case "inv-edit": openInvForm(el.dataset.id); break;
@@ -1939,6 +2174,7 @@ document.addEventListener("submit", (ev) => {
   if (ev.target.id === "authForm") doAuth("signin");
   if (ev.target.id === "invForm") submitInvForm(ev.target);
   if (ev.target.id === "entryForm") saveEntry(ev.target);
+  if (ev.target.id === "recurringForm") submitRecurringForm(ev.target);
 });
 
 document.addEventListener("input", (ev) => {
@@ -2033,6 +2269,7 @@ function onData() {
     }
   } else renderView();
   refreshInvDialog();
+  refreshRecurringDialog();
 }
 
 async function boot() {
@@ -2049,11 +2286,13 @@ async function boot() {
     unsubscribe?.();
     unsubscribe = null;
     state.user = user;
-    state.loaded = { settings: false, budgets: false, expenses: false };
+    state.loaded = { settings: false, budgets: false, expenses: false, recurring: false };
     state.settings = null;
     state.budgets = {};
     state.expenses = [];
     state.investments = [];
+    state.recurring = [];
+    state.recId = null;
     state.draft = null;
     state.dirty = false;
     if (user) {
@@ -2062,6 +2301,7 @@ async function boot() {
         budgets: (b) => { state.budgets = b; state.loaded.budgets = true; onData(); },
         expenses: (e) => { state.expenses = e; state.loaded.expenses = true; onData(); },
         investments: (v) => { state.investments = v; onData(); },
+        recurring: (r) => { state.recurring = r || []; state.loaded.recurring = true; onData(); },
         error: (e) => toast(e.code === "permission-denied" ? "No permission. Check your Firestore rules." : "Sync problem: " + e.message),
       });
     }
@@ -2182,7 +2422,7 @@ function addBackground(mascotId) {
 }
 addBackground();
 
-$("#settingsDialog").addEventListener("close", () => { state.invId = null; applyTheme(settings().theme); updateBackground(settings().mascot); });
+$("#settingsDialog").addEventListener("close", () => { state.invId = null; state.recId = null; applyTheme(settings().theme); updateBackground(settings().mascot); });
 
 boot();
 
