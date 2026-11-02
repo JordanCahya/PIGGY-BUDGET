@@ -1645,13 +1645,13 @@ function openSettings() {
           <label>Person ${i + 1}<input id="setName${i}" value="${esc(s.persons[i].name)}" maxlength="20"></label>
         </div>`).join("")}
       <div class="dlg-gemini">
-        <label>Gemini API Key <small>(for AI Receipt Scanner)</small>
+        <label>Gemini API Key <small>(Gemini 3.8 Flash Receipt Scanner)</small>
           <div class="input-with-btn">
             <input id="setGeminiKey" type="password" value="${esc(s.geminiApiKey || "")}" placeholder="AIzaSy...">
             <button type="button" class="btn btn-ghost sm" data-act="toggle-key-visibility" title="Show/Hide Key">👁️</button>
           </div>
           <small style="color:var(--ink-soft);font-size:0.84rem;margin-top:4px;display:block;">
-            Get a free API key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>. PiggyNest calls Gemini Flash directly with zero server costs.
+            Get a free API key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>. PiggyNest calls Gemini 3.8 Flash directly with zero server costs.
           </small>
         </label>
       </div>
@@ -2102,13 +2102,15 @@ async function logAllPendingRecurring() {
 /* ================================================================== */
 /* AI Receipt Scanner                                                  */
 /* ================================================================== */
+const GEMINI_MODELS = ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.0-flash"];
+
 function openGeminiKeyPrompt() {
   const dlg = $("#settingsDialog");
   dlg.innerHTML = `
     <div class="dlg-body">
       <h2>📷 Smart Receipt Scanner</h2>
       <p style="color:var(--ink-soft);font-size:0.94rem;">
-        To scan receipts automatically with Google Gemini Flash, PiggyNest needs your free Gemini API key.
+        To scan receipts automatically with Google Gemini 3.8 Flash, PiggyNest needs your free Gemini API key.
       </p>
       <form id="geminiQuickForm" autocomplete="off">
         <label>Gemini API Key
@@ -2200,7 +2202,6 @@ async function handleReceiptFile(file) {
     const categories = budgetFor(state.year).b.categories;
     const promptText = buildReceiptPrompt(categories);
 
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(apiKey)}`;
     const payload = {
       contents: [
         {
@@ -2212,16 +2213,44 @@ async function handleReceiptFile(file) {
       ],
     };
 
-    const res = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+    let data = null;
+    let lastError = null;
 
-    const data = await res.json();
-    if (!res.ok) {
-      const errDetail = data?.error?.message || `HTTP ${res.status}`;
-      throw new Error(errDetail);
+    for (const model of GEMINI_MODELS) {
+      try {
+        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+        const res = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        const json = await res.json();
+        if (res.ok) {
+          data = json;
+          break;
+        }
+
+        // If 404 (model not found / deprecated for this API key tier), attempt next model
+        if (res.status === 404) {
+          console.warn(`Gemini model ${model} returned 404, attempting fallback model...`);
+          lastError = new Error(json?.error?.message || `Model ${model} not found (404)`);
+          continue;
+        }
+
+        const errDetail = json?.error?.message || `HTTP ${res.status}`;
+        throw new Error(errDetail);
+      } catch (e) {
+        if (e.message && e.message.includes("404")) {
+          lastError = e;
+          continue;
+        }
+        throw e;
+      }
+    }
+
+    if (!data) {
+      throw lastError || new Error("All Gemini Flash models failed to respond");
     }
 
     const candidateText = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
