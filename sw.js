@@ -1,11 +1,11 @@
 // PiggyNest Service Worker - Offline Caching Infrastructure
-const CACHE_NAME = "piggynest-v3";
+const CACHE_NAME = "piggynest-v4";
 
 const PRECACHE_ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=10",
-  "./js/app.js?v=10",
+  "./styles.css?v=11",
+  "./js/app.js?v=11",
   "./js/db.js",
   "./js/calc.js",
   "./js/savings.js",

@@ -12,6 +12,8 @@ import {
   normalizeBudget,
   normalizeRecurringBills,
   findPendingRecurringBills,
+  buildReceiptPrompt,
+  parseReceiptResponse,
   calc,
   spendIndex as calcSpendIndex,
   usedStatus,
@@ -86,6 +88,7 @@ const DEFAULT_SETTINGS = {
   savingsGoal: 0,
   theme: "default",
   mascot: "piggy",
+  geminiApiKey: "",
   persons: [
     { id: "p1", name: "Mommy", emoji: "🌸" },
     { id: "p2", name: "Daddy", emoji: "🌿" },
@@ -101,6 +104,7 @@ function settings() {
     savingsGoal: Number(s.savingsGoal) || 0,
     theme: s.theme || "default",
     mascot: s.mascot || "piggy",
+    geminiApiKey: String(s.geminiApiKey || "").trim(),
     persons,
   };
 }
@@ -602,9 +606,13 @@ function expensesHtml() {
   return `
     <div class="two-col">
       <section class="card form-card">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
+        <div class="form-header-row">
           <h2 id="expFormTitle" style="margin:0;">Add an expense</h2>
-          <button type="button" class="btn btn-soft sm" data-act="open-recurring">📅 Recurring bills</button>
+          <div class="form-header-actions">
+            <button type="button" class="btn btn-soft sm" id="btnScanReceipt" data-act="scan-receipt">📷 Scan receipt</button>
+            <button type="button" class="btn btn-soft sm" data-act="open-recurring">📅 Recurring bills</button>
+          </div>
+          <input type="file" id="receiptFileInput" accept="image/*" capture="environment" style="display:none">
         </div>
         <form id="expForm" autocomplete="off">
           <label>Date<input type="date" name="date" required></label>
@@ -1636,6 +1644,17 @@ function openSettings() {
           <label>Emoji<input id="setEmoji${i}" value="${esc(s.persons[i].emoji)}" maxlength="4" style="text-align:center"></label>
           <label>Person ${i + 1}<input id="setName${i}" value="${esc(s.persons[i].name)}" maxlength="20"></label>
         </div>`).join("")}
+      <div class="dlg-gemini">
+        <label>Gemini API Key <small>(for AI Receipt Scanner)</small>
+          <div class="input-with-btn">
+            <input id="setGeminiKey" type="password" value="${esc(s.geminiApiKey || "")}" placeholder="AIzaSy...">
+            <button type="button" class="btn btn-ghost sm" data-act="toggle-key-visibility" title="Show/Hide Key">👁️</button>
+          </div>
+          <small style="color:var(--ink-soft);font-size:0.84rem;margin-top:4px;display:block;">
+            Get a free API key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>. PiggyNest calls Gemini Flash directly with zero server costs.
+          </small>
+        </label>
+      </div>
       <div class="dlg-backup">
         <small style="font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.5px;">Recurring & Backup</small>
         <div class="dlg-backup-btns">
@@ -1660,12 +1679,14 @@ async function saveSettings() {
   const savingsGoal = goalIn ? (Number(goalIn.value) || 0) : (curr.savingsGoal || 0);
   const selectedTheme = $("#themePicker .choice-pill.active")?.dataset.themeId || curr.theme || "default";
   const selectedMascot = $("#mascotPicker .choice-pill.active")?.dataset.mascotId || curr.mascot || "piggy";
+  const geminiApiKey = $("#setGeminiKey")?.value.trim() || "";
   const next = {
     familyName: $("#setFamily").value.trim() || "Our Cozy Family",
     currency: $("#setCurrency").value,
     savingsGoal,
     theme: selectedTheme,
     mascot: selectedMascot,
+    geminiApiKey,
     persons: PERSON_KEYS.map((k, i) => ({
       id: k,
       name: $(`#setName${i}`).value.trim() || `Person ${i + 1}`,
@@ -2079,6 +2100,174 @@ async function logAllPendingRecurring() {
 }
 
 /* ================================================================== */
+/* AI Receipt Scanner                                                  */
+/* ================================================================== */
+function openGeminiKeyPrompt() {
+  const dlg = $("#settingsDialog");
+  dlg.innerHTML = `
+    <div class="dlg-body">
+      <h2>📷 Smart Receipt Scanner</h2>
+      <p style="color:var(--ink-soft);font-size:0.94rem;">
+        To scan receipts automatically with Google Gemini Flash, PiggyNest needs your free Gemini API key.
+      </p>
+      <form id="geminiQuickForm" autocomplete="off">
+        <label>Gemini API Key
+          <div class="input-with-btn">
+            <input id="quickGeminiKey" type="password" required placeholder="AIzaSy..." autofocus>
+            <button type="button" class="btn btn-ghost sm" data-act="toggle-key-visibility" title="Show/Hide Key">👁️</button>
+          </div>
+        </label>
+        <small style="color:var(--ink-soft);display:block;margin-top:-6px;line-height:1.4;">
+          Get your free key in 30 seconds at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>. No credit card required.
+        </small>
+        <div class="dlg-actions" style="margin-top:10px;">
+          <button type="button" class="btn btn-ghost" data-act="close-settings">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save & Continue</button>
+        </div>
+      </form>
+    </div>
+  `;
+  if (!dlg.open) dlg.showModal();
+}
+
+async function submitQuickGeminiKey(form) {
+  const key = form.querySelector("#quickGeminiKey")?.value.trim() || "";
+  if (!key) {
+    toast("Please paste your Gemini API key");
+    return;
+  }
+  const curr = settings();
+  const next = { ...curr, geminiApiKey: key };
+  try {
+    await state.db.saveSettings(next);
+    $("#settingsDialog").close();
+    toast("Gemini API key saved! Choose a receipt photo.");
+    setTimeout(() => {
+      $("#receiptFileInput")?.click();
+    }, 250);
+  } catch (err) {
+    toast("Couldn't save: " + (err.message || err));
+  }
+}
+
+function compressImage(file, maxWidth = 1200, maxHeight = 1200, quality = 0.75) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxWidth || height > maxHeight) {
+          const ratio = Math.min(maxWidth / width, maxHeight / height);
+          width = Math.round(width * ratio);
+          height = Math.round(height * ratio);
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, width, height);
+        const dataUrl = canvas.toDataURL("image/jpeg", quality);
+        const base64Data = dataUrl.split(",")[1];
+        resolve(base64Data);
+      };
+      img.onerror = (err) => reject(new Error("Couldn't load image: " + err));
+      img.src = e.target.result;
+    };
+    reader.onerror = (err) => reject(new Error("Couldn't read file: " + err));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function handleReceiptFile(file) {
+  if (!file) return;
+  const apiKey = settings().geminiApiKey;
+  if (!apiKey) {
+    openGeminiKeyPrompt();
+    return;
+  }
+
+  const btn = $("#btnScanReceipt");
+  const origBtnText = btn ? btn.innerHTML : "📷 Scan receipt";
+  if (btn) {
+    btn.disabled = true;
+    btn.classList.add("scanning");
+    btn.innerHTML = `<span class="scan-spinner">✨</span> Scanning…`;
+  }
+
+  try {
+    const base64Data = await compressImage(file, 1200, 1200, 0.75);
+    const categories = budgetFor(state.year).b.categories;
+    const promptText = buildReceiptPrompt(categories);
+
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(apiKey)}`;
+    const payload = {
+      contents: [
+        {
+          parts: [
+            { text: promptText },
+            { inline_data: { mime_type: "image/jpeg", data: base64Data } },
+          ],
+        },
+      ],
+    };
+
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      const errDetail = data?.error?.message || `HTTP ${res.status}`;
+      throw new Error(errDetail);
+    }
+
+    const candidateText = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    if (!candidateText) {
+      throw new Error("No receipt details identified in response");
+    }
+
+    const parsed = parseReceiptResponse(candidateText);
+
+    // Auto-fill form
+    const form = $("#expForm");
+    if (form) {
+      if (parsed.date) {
+        form.date.value = parsed.date;
+      }
+      if (parsed.amount > 0) {
+        form.amount.value = parsed.amount;
+      }
+      if (parsed.merchant) {
+        form.note.value = parsed.merchant;
+      }
+      if (parsed.suggestedCategoryId && form.categoryId) {
+        const opts = [...form.categoryId.options].map((o) => o.value);
+        if (opts.includes(parsed.suggestedCategoryId)) {
+          form.categoryId.value = parsed.suggestedCategoryId;
+        }
+      }
+      form.amount?.focus();
+    }
+
+    toast("✨ Receipt scanned! Check details and select who paid.");
+  } catch (err) {
+    console.error("Receipt scan failed:", err);
+    toast("Couldn't scan receipt: " + (err.message || err));
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.classList.remove("scanning");
+      btn.innerHTML = origBtnText;
+    }
+    const fileIn = $("#receiptFileInput");
+    if (fileIn) fileIn.value = "";
+  }
+}
+
+/* ================================================================== */
 /* Events                                                              */
 /* ================================================================== */
 document.addEventListener("click", async (ev) => {
@@ -2102,6 +2291,19 @@ document.addEventListener("click", async (ev) => {
   switch (act) {
     case "tab": setTab(el.dataset.tab); break;
     case "quick-add": setTab("expenses"); $("#expForm")?.amount.focus({ preventScroll: true }); break;
+    case "scan-receipt": {
+      if (!settings().geminiApiKey) {
+        openGeminiKeyPrompt();
+      } else {
+        $("#receiptFileInput")?.click();
+      }
+      break;
+    }
+    case "toggle-key-visibility": {
+      const inp = $("#setGeminiKey") || $("#quickGeminiKey");
+      if (inp) inp.type = inp.type === "password" ? "text" : "password";
+      break;
+    }
     case "log-recurring-all": await logAllPendingRecurring(); break;
     case "open-recurring": openRecurringDialog(); break;
     case "edit-recurring": openRecurringDialog(el.dataset.id); break;
@@ -2175,6 +2377,14 @@ document.addEventListener("submit", (ev) => {
   if (ev.target.id === "invForm") submitInvForm(ev.target);
   if (ev.target.id === "entryForm") saveEntry(ev.target);
   if (ev.target.id === "recurringForm") submitRecurringForm(ev.target);
+  if (ev.target.id === "geminiQuickForm") submitQuickGeminiKey(ev.target);
+});
+
+document.addEventListener("change", (ev) => {
+  if (ev.target.id === "receiptFileInput") {
+    const file = ev.target.files?.[0];
+    if (file) handleReceiptFile(file);
+  }
 });
 
 document.addEventListener("input", (ev) => {

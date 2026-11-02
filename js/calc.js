@@ -191,13 +191,104 @@ export function findPendingRecurringBills(recurringBills, expenses = [], year, m
   });
 }
 
+export function buildReceiptPrompt(categories = []) {
+  const catList = (Array.isArray(categories) ? categories : [])
+    .map((c) => `- ID: "${c.id}", Name: "${c.emoji ? c.emoji + " " : ""}${c.name}"`)
+    .join("\n");
+
+  return [
+    "You are a receipt scanning assistant for a personal budget application.",
+    "Analyze the provided receipt image and extract the following information in JSON format:",
+    "1. Merchant or store name (merchant).",
+    "2. Transaction date in YYYY-MM-DD format (date). If not found, use today's date.",
+    "3. Total transaction amount as a numeric value without currency symbols (amount).",
+    "4. Suggested category ID from the list below that best matches the purchase (suggestedCategoryId).",
+    "",
+    "Available Categories:",
+    catList || "(No categories provided, set suggestedCategoryId to null)",
+    "",
+    "Respond ONLY with a valid JSON object in the following format with no markdown and no extra text:",
+    "{",
+    '  "merchant": "Store Name",',
+    '  "date": "YYYY-MM-DD",',
+    '  "amount": 0.00,',
+    '  "suggestedCategoryId": "id_or_null"',
+    "}",
+  ].join("\n");
+}
+
+export function parseReceiptResponse(geminiJsonText) {
+  if (!geminiJsonText || typeof geminiJsonText !== "string") {
+    return {
+      merchant: "",
+      date: "",
+      amount: 0,
+      suggestedCategoryId: null,
+    };
+  }
+
+  let text = geminiJsonText.trim();
+
+  const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (codeBlockMatch) {
+    text = codeBlockMatch[1].trim();
+  } else {
+    const firstBrace = text.indexOf("{");
+    const lastBrace = text.lastIndexOf("}");
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      text = text.slice(firstBrace, lastBrace + 1).trim();
+    }
+  }
+
+  let parsed = {};
+  try {
+    parsed = JSON.parse(text);
+  } catch (err) {
+    try {
+      const sanitized = text.replace(/,\s*([}\]])/g, "$1");
+      parsed = JSON.parse(sanitized);
+    } catch (e) {
+      parsed = {};
+    }
+  }
+
+  const merchant = typeof parsed.merchant === "string" ? parsed.merchant.trim() : "";
+  let date = typeof parsed.date === "string" ? parsed.date.trim() : "";
+  if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    const d = new Date(date);
+    if (!isNaN(d.getTime())) {
+      date = d.toISOString().slice(0, 10);
+    }
+  }
+
+  let amount = 0;
+  if (typeof parsed.amount === "number") {
+    amount = isNaN(parsed.amount) ? 0 : Math.max(0, parsed.amount);
+  } else if (typeof parsed.amount === "string") {
+    const cleaned = parsed.amount.replace(/[^0-9.-]/g, "");
+    amount = Math.max(0, parseFloat(cleaned) || 0);
+  }
+
+  const suggestedCategoryId =
+    parsed.suggestedCategoryId && typeof parsed.suggestedCategoryId === "string"
+      ? parsed.suggestedCategoryId.trim()
+      : null;
+
+  return {
+    merchant,
+    date,
+    amount,
+    suggestedCategoryId,
+  };
+}
+
 export function createBackupPayload(state = {}) {
   return {
     version: 1,
     app: "piggynest",
     exportedAt: new Date().toISOString(),
     data: {
-      settings: state.settings || null,
+      settings: state.settings ? { ...state.settings } : null,
       budgets: state.budgets || {},
       expenses: state.expenses || [],
       investments: state.investments || [],

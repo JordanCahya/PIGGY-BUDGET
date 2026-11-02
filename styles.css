@@ -1259,3 +1259,48 @@ body { background: var(--bg); background-attachment: scroll; }
   color: #f7ede8;
 }
 
+/* ---------- AI Receipt Scanner & Form Header ---------- */
+.form-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.form-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.btn.scanning {
+  position: relative;
+  opacity: 0.9;
+  cursor: wait;
+  background: var(--pink-soft) !important;
+  color: var(--pink-deep) !important;
+  border-color: var(--pink) !important;
+}
+.scan-spinner {
+  display: inline-block;
+  animation: scan-pulse 1s ease-in-out infinite alternate;
+}
+@keyframes scan-pulse {
+  0% { transform: scale(1) rotate(0deg); opacity: 0.7; }
+  100% { transform: scale(1.3) rotate(20deg); opacity: 1; }
+}
+.input-with-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.input-with-btn input {
+  flex: 1;
+}
+[data-theme="mocha"] .btn.scanning {
+  background: #382c26 !important;
+  color: #d4a373 !important;
+  border-color: #d4a373 !important;
+}
+

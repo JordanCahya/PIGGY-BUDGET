@@ -91,10 +91,11 @@ async function createFirebaseDb() {
       };
     },
 
-    saveSettings: (s) => fs.setDoc(settingsRef(), s),
+    saveSettings: (s) => fs.setDoc(settingsRef(), s, { merge: true }),
     saveSavingsGoal: (amount) => fs.setDoc(settingsRef(), { savingsGoal: Number(amount) || 0 }, { merge: true }),
     saveTheme: (theme) => fs.setDoc(settingsRef(), { theme: String(theme || "default") }, { merge: true }),
     saveMascot: (mascot) => fs.setDoc(settingsRef(), { mascot: String(mascot || "piggy") }, { merge: true }),
+    saveGeminiKey: (apiKey) => fs.setDoc(settingsRef(), { geminiApiKey: String(apiKey || "").trim() }, { merge: true }),
     saveBudget: (year, b) => fs.setDoc(fs.doc(budgetsCol(), String(year)), b),
     addExpense: async (e) => {
       const ref = await fs.addDoc(expensesCol(), { ...e, createdAt: fs.serverTimestamp() });
@@ -125,6 +126,9 @@ async function createFirebaseDb() {
         }
         if (payload.settings.mascot !== undefined) {
           settingsData.mascot = String(payload.settings.mascot || "piggy");
+        }
+        if (payload.settings.geminiApiKey !== undefined) {
+          settingsData.geminiApiKey = String(payload.settings.geminiApiKey || "").trim();
         }
         batch.set(settingsRef(), settingsData, { merge: true });
       }
@@ -211,7 +215,7 @@ function createLocalDb() {
     },
 
     async saveSettings(s) {
-      data.settings = s;
+      data.settings = { ...(data.settings || {}), ...s };
       persist();
     },
     async saveSavingsGoal(amount) {
@@ -224,6 +228,10 @@ function createLocalDb() {
     },
     async saveMascot(mascot) {
       data.settings = { ...(data.settings || {}), mascot: String(mascot || "piggy") };
+      persist();
+    },
+    async saveGeminiKey(apiKey) {
+      data.settings = { ...(data.settings || {}), geminiApiKey: String(apiKey || "").trim() };
       persist();
     },
     async saveBudget(year, b) {
@@ -285,6 +293,9 @@ function createLocalDb() {
         }
         if (payload.settings.mascot !== undefined) {
           settingsData.mascot = String(payload.settings.mascot || "piggy");
+        }
+        if (payload.settings.geminiApiKey !== undefined) {
+          settingsData.geminiApiKey = String(payload.settings.geminiApiKey || "").trim();
         }
         data.settings = { ...(data.settings || {}), ...settingsData };
       }
