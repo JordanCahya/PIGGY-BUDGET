@@ -1581,3 +1581,59 @@ body { background: var(--bg); background-attachment: scroll; }
 [data-theme="mocha"] .paypal-loading {
   color: #c4b5ad;
 }
+
+/* ---------- Admin Badge & Trial Reassurance Tag ---------- */
+.pro-badge.admin {
+  cursor: pointer;
+  background: linear-gradient(135deg, #6a11cb 0%, #8e2de2 50%, #f72585 100%);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(110, 45, 226, 0.4);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.pro-badge.admin:hover {
+  transform: translateY(-1px) scale(1.02);
+  box-shadow: 0 4px 12px rgba(110, 45, 226, 0.55);
+}
+.pro-badge.admin:active {
+  transform: translateY(1px);
+}
+
+.pro-trial-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: var(--mint-soft, #e6f9f0);
+  color: #1a6e54;
+  border: 1.5px solid var(--mint, #6fd6b8);
+  font-size: 0.86rem;
+  font-weight: 700;
+  padding: 6px 14px;
+  border-radius: 999px;
+  margin-bottom: 8px;
+}
+
+.pro-active-box.admin {
+  background: #f3e8ff;
+  border-color: #c084fc;
+}
+.pro-active-box.admin b {
+  color: #6b21a8;
+}
+
+[data-theme="mocha"] .pro-badge.admin {
+  background: linear-gradient(135deg, #4a154b 0%, #7b2cbf 100%);
+  box-shadow: 0 2px 8px rgba(123, 44, 191, 0.4);
+}
+[data-theme="mocha"] .pro-trial-tag {
+  background: #1c2b24;
+  border-color: #2e4a3c;
+  color: #8de3c2;
+}
+[data-theme="mocha"] .pro-active-box.admin {
+  background: #2b1a3d;
+  border-color: #582e7a;
+}
+[data-theme="mocha"] .pro-active-box.admin b {
+  color: #d8b4fe;
+}

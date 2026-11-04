@@ -6,6 +6,7 @@ import {
   PALETTE,
   THEMES,
   MASCOTS,
+  isAdmin,
   isPro,
   getProRemainingDays,
   PRO_PRICE,
@@ -97,6 +98,7 @@ const DEFAULT_SETTINGS = {
   pro: false,
   proUntil: null,
   subscriptionId: null,
+  trialUsed: false,
   persons: [
     { id: "p1", name: "Mommy", emoji: "🌸" },
     { id: "p2", name: "Daddy", emoji: "🌿" },
@@ -115,14 +117,18 @@ function settings() {
     pro: Boolean(s.pro || false),
     proUntil: s.proUntil || null,
     subscriptionId: s.subscriptionId || null,
+    trialUsed: Boolean(s.trialUsed || false),
     persons,
   };
 }
 
 function proBadgeHtml(s) {
-  if (isPro(s)) {
+  if (isAdmin(state.user)) {
+    return `<span class="pro-badge admin" data-act="open-pro" role="button" tabindex="0">👑 ADMIN</span>`;
+  }
+  if (isPro(s, state.user)) {
     const days = getProRemainingDays(s);
-    if (days !== null && days > 0) {
+    if (days !== null && days > 0 && !s.subscriptionId) {
       return `<button type="button" class="pro-badge active" data-act="open-pro">💎 PRO (${days}d left)</button>`;
     }
     return `<button type="button" class="pro-badge active" data-act="open-pro">💎 PRO</button>`;
@@ -1694,7 +1700,7 @@ async function saveSettings() {
   let selectedMascot = $("#mascotPicker .choice-pill.active")?.dataset.mascotId || curr.mascot || "piggy";
 
   // Prevent non-pro users from saving pro theme or mascot
-  if (!isPro(curr)) {
+  if (!isPro(curr, state.user)) {
     if (getTheme(selectedTheme).pro) selectedTheme = "default";
     if (getMascot(selectedMascot).pro) selectedMascot = "piggy";
   }
@@ -1708,6 +1714,7 @@ async function saveSettings() {
     pro: Boolean(curr.pro),
     proUntil: curr.proUntil || null,
     subscriptionId: curr.subscriptionId || null,
+    trialUsed: Boolean(curr.trialUsed || false),
     persons: PERSON_KEYS.map((k, i) => ({
       id: k,
       name: $(`#setName${i}`).value.trim() || `Person ${i + 1}`,
@@ -2167,13 +2174,14 @@ function renderPayPalButtons(dlg) {
       },
       onApprove: async function(data, actions) {
         try {
-          await state.db.saveProStatus(true, null, data.subscriptionID);
+          await state.db.saveProStatus(true, null, data.subscriptionID, true);
           if (state.settings) {
             state.settings.pro = true;
             state.settings.proUntil = null;
             state.settings.subscriptionId = data.subscriptionID;
+            state.settings.trialUsed = true;
           }
-          toast("💎 Welcome to PiggyNest Pro!");
+          toast("💎 Welcome to PiggyNest Pro! Your 30-day trial has begun.");
           dlg.close();
           render();
         } catch (err) {
@@ -2194,11 +2202,18 @@ function renderPayPalButtons(dlg) {
 function openProDialog() {
   const s = settings();
   const dlg = $("#settingsDialog");
-  const proActive = isPro(s);
+  const adminUser = isAdmin(state.user);
+  const proActive = isPro(s, state.user);
   const days = getProRemainingDays(s);
 
   let statusSection = "";
-  if (proActive) {
+  if (adminUser) {
+    statusSection = `
+      <div class="pro-active-box admin">
+        <b>👑 Admin Account</b>
+        <p>Logged in as ${esc(state.user?.email || "")}.<br>You have full, permanent Pro access across PiggyNest.</p>
+      </div>`;
+  } else if (proActive) {
     if (s.subscriptionId) {
       statusSection = `
         <div class="pro-active-box">
@@ -2228,22 +2243,23 @@ function openProDialog() {
   } else {
     statusSection = `
       <div class="pro-cta-section">
+        <div class="pro-trial-tag">✨ Includes 30-Day Free Trial ($0.00 today, then ${esc(PRO_PRICE)})</div>
         <div id="paypal-button-container" class="paypal-container">
           <span class="paypal-loading">Loading PayPal checkout…</span>
         </div>
-        <button type="button" class="btn btn-ghost sm" id="btnTestTrial" style="margin-top:4px;">Or start 30-day free trial</button>
       </div>`;
   }
 
   dlg.innerHTML = `
     <div class="dlg-body pro-dlg">
       <div class="pro-hero">
-        <div class="pro-icon-sparkle">💎</div>
-        <h2>${proActive ? "PiggyNest Pro Active" : "PiggyNest Pro"}</h2>
-        <p class="pro-tagline">${proActive ? "Thank you for supporting PiggyNest!" : "Cozy, effortless budgeting designed for couples."}</p>
+        <div class="pro-icon-sparkle">${adminUser ? "👑" : "💎"}</div>
+        <h2>${adminUser ? "PiggyNest Admin" : (proActive ? "PiggyNest Pro Active" : "PiggyNest Pro")}</h2>
+        <p class="pro-tagline">${adminUser ? "Full admin privileges and unlimited Pro access." : (proActive ? "Thank you for supporting PiggyNest!" : "Cozy, effortless budgeting designed for couples.")}</p>
+        ${!adminUser ? `
         <div class="pro-price-badge">
           <span class="pro-price">${esc(PRO_PRICE)}</span>
-        </div>
+        </div>` : ""}
       </div>
 
       <div class="pro-features-list">
@@ -2294,7 +2310,7 @@ function openProDialog() {
 
   if (!dlg.open) dlg.showModal();
 
-  if (!proActive) {
+  if (!proActive && !adminUser) {
     loadPayPalSdk(() => {
       renderPayPalButtons(dlg);
     });
@@ -2332,7 +2348,7 @@ function compressImage(file, maxWidth = 1200, maxHeight = 1200, quality = 0.75) 
 
 async function handleReceiptFile(file) {
   if (!file) return;
-  if (!isPro(settings())) {
+  if (!isPro(settings(), state.user)) {
     openProDialog();
     return;
   }
@@ -2449,28 +2465,10 @@ async function handleReceiptFile(file) {
 /* Events                                                              */
 /* ================================================================== */
 document.addEventListener("click", async (ev) => {
-  const testTrialBtn = ev.target.closest("#btnTestTrial");
-  if (testTrialBtn) {
-    try {
-      const res = await state.db.activateProCode("TRIAL");
-      if (state.settings) {
-        state.settings.pro = res.isPro;
-        state.settings.proUntil = res.proUntil;
-        state.settings.subscriptionId = null;
-      }
-      $("#settingsDialog")?.close();
-      toast("💎 PiggyNest Pro 30-day trial activated! Enjoy all features.");
-      render();
-    } catch (e) {
-      console.warn("Trial error:", e);
-      toast("Error starting trial: " + (e.message || e));
-    }
-    return;
-  }
   const themeBtn = ev.target.closest("[data-theme-id]");
   if (themeBtn) {
     const targetTheme = getTheme(themeBtn.dataset.themeId);
-    if (targetTheme.pro && !isPro(settings())) {
+    if (targetTheme.pro && !isPro(settings(), state.user)) {
       openProDialog();
       return;
     }
@@ -2482,7 +2480,7 @@ document.addEventListener("click", async (ev) => {
   const mascotBtn = ev.target.closest("[data-mascot-id]");
   if (mascotBtn) {
     const targetMascot = getMascot(mascotBtn.dataset.mascotId);
-    if (targetMascot.pro && !isPro(settings())) {
+    if (targetMascot.pro && !isPro(settings(), state.user)) {
       openProDialog();
       return;
     }
@@ -2543,7 +2541,7 @@ document.addEventListener("click", async (ev) => {
       break;
     }
     case "scan-receipt": {
-      if (!isPro(settings())) {
+      if (!isPro(settings(), state.user)) {
         openProDialog();
       } else {
         $("#receiptFileInput")?.click();
@@ -2551,7 +2549,7 @@ document.addEventListener("click", async (ev) => {
       break;
     }
     case "log-recurring-all": {
-      if (!isPro(settings())) {
+      if (!isPro(settings(), state.user)) {
         openProDialog();
       } else {
         await logAllPendingRecurring();
@@ -2559,7 +2557,7 @@ document.addEventListener("click", async (ev) => {
       break;
     }
     case "open-recurring": {
-      if (!isPro(settings())) {
+      if (!isPro(settings(), state.user)) {
         openProDialog();
       } else {
         openRecurringDialog();
@@ -2748,10 +2746,14 @@ function refreshChrome() {
 
   const proSlot = $(".brand .pro-badge");
   if (proSlot) {
-    if (isPro(s)) {
+    if (isAdmin(state.user)) {
+      proSlot.className = "pro-badge admin";
+      proSlot.textContent = "👑 ADMIN";
+      proSlot.setAttribute("data-act", "open-pro");
+    } else if (isPro(s, state.user)) {
       const days = getProRemainingDays(s);
       proSlot.className = "pro-badge active";
-      proSlot.textContent = (days !== null && days > 0) ? `💎 PRO (${days}d left)` : "💎 PRO";
+      proSlot.textContent = (days !== null && days > 0 && !s.subscriptionId) ? `💎 PRO (${days}d left)` : "💎 PRO";
       proSlot.setAttribute("data-act", "open-pro");
     } else {
       proSlot.className = "pro-badge upgrade-trigger";

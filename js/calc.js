@@ -18,25 +18,25 @@ export const MASCOTS = [
   { id: "bunny", name: "Bunny the Rabbit", emoji: "🐰", pro: true },
 ];
 
-export const PRO_PRICE = "$2.99 / month";
+export const PRO_PRICE = "$2.00 / month";
 export const PAYPAL_PLAN_ID = "P-0TR67131SL0448510NLVTYGI";
 export const PAYPAL_CLIENT_ID = "BAAHSPhp62grKR7PYtxRFB1-GtBotGFDT3_LbQ-eKExdQNvLDyAkpDmY9_WQHethJN7amo5N7arDDoaYRY";
 
-export function isPro(settings) {
-  if (!settings || typeof settings !== "object") return false;
-  if (settings.pro === true) {
-    if (settings.proUntil) {
-      const until = new Date(settings.proUntil);
-      if (!isNaN(until.getTime())) {
-        return until > new Date();
-      }
-    }
-    return true;
-  }
-  if (settings.proUntil) {
-    const until = new Date(settings.proUntil);
-    return !isNaN(until.getTime()) && until > new Date();
-  }
+export const ADMIN_EMAILS = [
+  "jordancahya1@gmail.com",
+  "jordancahya@gmail.com",
+];
+
+export function isAdmin(user) {
+  if (!user || typeof user !== "object") return false;
+  const email = String(user.email || "").trim().toLowerCase();
+  return Boolean(email && ADMIN_EMAILS.includes(email));
+}
+
+export function isPro(settings, user = null) {
+  if (isAdmin(user)) return true;
+  if (settings?.pro === true) return true;
+  if (settings?.proUntil && new Date(settings.proUntil) > new Date()) return true;
   return false;
 }
 
@@ -328,6 +328,7 @@ export function createBackupPayload(state = {}) {
       pro: state.settings.pro === true,
       proUntil: state.settings.proUntil || null,
       subscriptionId: state.settings.subscriptionId || null,
+      trialUsed: Boolean(state.settings.trialUsed),
     };
   }
   return {

@@ -20,27 +20,27 @@ function evaluateProCode(rawCode) {
   const code = String(rawCode || "").trim().toUpperCase();
   if (!code) return { valid: false, message: "Please enter an activation code." };
 
-  // Lifetime codes
-  const lifetimeCodes = ["PIGGYPRO", "COZYPRO", "PRO2026", "LIFETIME", "VIPPRO"];
-  if (lifetimeCodes.includes(code) || code.startsWith("PRO-")) {
-    return { valid: true, isPro: true, proUntil: null, message: "PiggyNest Pro Lifetime Activated! 🐷✨" };
+  // Secure Admin Master & VIP Codes (Lifetime Pro with zero payment)
+  const masterVipCodes = [
+    "JORDANVIP",
+    "PIGGYADMIN",
+    "COZYADMIN",
+    "PIGGYPRO",
+    "COZYPRO",
+    "PRO2026",
+    "LIFETIME",
+    "VIPPRO",
+  ];
+  if (masterVipCodes.includes(code) || code.startsWith("PRO-ADMIN-")) {
+    return {
+      valid: true,
+      isPro: true,
+      proUntil: null,
+      message: "PiggyNest Pro VIP Lifetime Access Activated! 🐷✨",
+    };
   }
 
-  // 1-Year trial / promo code
-  if (code === "MOCHI" || code === "BOBA" || code === "YEAR2026") {
-    const until = new Date();
-    until.setFullYear(until.getFullYear() + 1);
-    return { valid: true, isPro: true, proUntil: until.toISOString(), message: "PiggyNest Pro 1-Year Access Activated! 🐱" };
-  }
-
-  // 30-Day trial code
-  if (code === "TESTPRO" || code === "MONTHLY" || code === "TRIAL") {
-    const until = new Date();
-    until.setDate(until.getDate() + 30);
-    return { valid: true, isPro: true, proUntil: until.toISOString(), message: "PiggyNest Pro 30-Day Trial Activated! 🌸" };
-  }
-
-  return { valid: false, message: "Invalid activation code. Please check and try again." };
+  return { valid: false, message: "Invalid activation code. Subscribe via PayPal to get your 30-day $0 trial!" };
 }
 
 export async function createDb() {
@@ -122,10 +122,13 @@ async function createFirebaseDb() {
     saveSavingsGoal: (amount) => fs.setDoc(settingsRef(), { savingsGoal: Number(amount) || 0 }, { merge: true }),
     saveTheme: (theme) => fs.setDoc(settingsRef(), { theme: String(theme || "default") }, { merge: true }),
     saveMascot: (mascot) => fs.setDoc(settingsRef(), { mascot: String(mascot || "piggy") }, { merge: true }),
-    saveProStatus: (isPro, proUntil, subscriptionId) => {
+    saveProStatus: (isPro, proUntil, subscriptionId, trialUsed) => {
       const update = { pro: Boolean(isPro), proUntil: proUntil || null };
       if (subscriptionId !== undefined) {
         update.subscriptionId = subscriptionId || null;
+      }
+      if (trialUsed !== undefined) {
+        update.trialUsed = Boolean(trialUsed);
       }
       return fs.setDoc(settingsRef(), update, { merge: true });
     },
@@ -176,6 +179,9 @@ async function createFirebaseDb() {
         }
         if (payload.settings.subscriptionId !== undefined) {
           settingsData.subscriptionId = payload.settings.subscriptionId || null;
+        }
+        if (payload.settings.trialUsed !== undefined) {
+          settingsData.trialUsed = Boolean(payload.settings.trialUsed);
         }
         batch.set(settingsRef(), settingsData, { merge: true });
       }
@@ -277,12 +283,13 @@ function createLocalDb() {
       data.settings = { ...(data.settings || {}), mascot: String(mascot || "piggy") };
       persist();
     },
-    async saveProStatus(isPro, proUntil, subscriptionId) {
+    async saveProStatus(isPro, proUntil, subscriptionId, trialUsed) {
       data.settings = {
         ...(data.settings || {}),
         pro: Boolean(isPro),
         proUntil: proUntil || null,
         ...(subscriptionId !== undefined ? { subscriptionId: subscriptionId || null } : {}),
+        ...(trialUsed !== undefined ? { trialUsed: Boolean(trialUsed) } : {}),
       };
       persist();
     },
@@ -374,6 +381,9 @@ function createLocalDb() {
         }
         if (payload.settings.subscriptionId !== undefined) {
           settingsData.subscriptionId = payload.settings.subscriptionId || null;
+        }
+        if (payload.settings.trialUsed !== undefined) {
+          settingsData.trialUsed = Boolean(payload.settings.trialUsed);
         }
         data.settings = { ...(data.settings || {}), ...settingsData };
       }
