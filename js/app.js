@@ -1,10 +1,12 @@
 import { createDb } from "./db.js";
 import { calculateSavingsProgress } from "./savings.js";
+import { firebaseConfig } from "../firebase-config.js";
 import {
   PERSON_KEYS,
   PALETTE,
   THEMES,
   MASCOTS,
+  isPro,
   getTheme,
   getMascot,
   defaultCategories,
@@ -88,7 +90,8 @@ const DEFAULT_SETTINGS = {
   savingsGoal: 0,
   theme: "default",
   mascot: "piggy",
-  geminiApiKey: "",
+  pro: false,
+  proUntil: null,
   persons: [
     { id: "p1", name: "Mommy", emoji: "🌸" },
     { id: "p2", name: "Daddy", emoji: "🌿" },
@@ -104,7 +107,8 @@ function settings() {
     savingsGoal: Number(s.savingsGoal) || 0,
     theme: s.theme || "default",
     mascot: s.mascot || "piggy",
-    geminiApiKey: String(s.geminiApiKey || "").trim(),
+    pro: Boolean(s.pro || false),
+    proUntil: s.proUntil || null,
     persons,
   };
 }
@@ -204,6 +208,7 @@ function shellHtml() {
       <div class="brand">
         <span class="brand-pig">${esc(getMascot(s.mascot).emoji)}</span>
         <div><b>${esc(s.familyName)}</b><small>PiggyNest</small></div>
+        ${isPro(s) ? `<span class="pro-badge active">💎 PRO</span>` : `<button type="button" class="pro-badge upgrade-trigger" data-act="open-pro">✨ Upgrade to Pro</button>`}
       </div>
       <div class="controls">
         <select id="yearSel" aria-label="Year">${yearOptions()}</select>
@@ -1621,9 +1626,15 @@ async function deleteInvestment(id) {
 function openSettings() {
   const s = settings();
   const dlg = $("#settingsDialog");
+  const proBadge = isPro(s)
+    ? `<span class="pro-badge active">💎 PRO</span>`
+    : `<button type="button" class="pro-badge upgrade-trigger" data-act="open-pro">✨ Upgrade to Pro</button>`;
   dlg.innerHTML = `
     <div class="dlg-body">
-      <h2>Family settings</h2>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+        <h2 style="margin:0;">Family settings</h2>
+        ${proBadge}
+      </div>
       <label>Family name<input id="setFamily" value="${esc(s.familyName)}" maxlength="30"></label>
       <label>Currency
         <select id="setCurrency">${CURRENCIES.map((cur) => `<option ${cur === s.currency ? "selected" : ""}>${cur}</option>`).join("")}</select>
@@ -1631,12 +1642,12 @@ function openSettings() {
       <label>Monthly savings goal<input id="setSavingsGoal" type="number" min="0" step="any" value="${s.savingsGoal || ""}" placeholder="0"></label>
       <label>Theme
         <div class="choice-pills" id="themePicker">
-          ${THEMES.map((t) => `<button type="button" class="choice-pill ${t.id === (s.theme || "default") ? "active" : ""}" data-theme-id="${t.id}"><span>${t.emoji}</span><span>${esc(t.name)}</span></button>`).join("")}
+          ${THEMES.map((t) => `<button type="button" class="choice-pill ${t.id === (s.theme || "default") ? "active" : ""}" data-theme-id="${t.id}"><span>${t.emoji}</span><span>${esc(t.name)}</span>${t.pro ? `<span class="pill-pro-tag">PRO</span>` : ""}</button>`).join("")}
         </div>
       </label>
       <label>Mascot
         <div class="choice-pills" id="mascotPicker">
-          ${MASCOTS.map((m) => `<button type="button" class="choice-pill ${m.id === (s.mascot || "piggy") ? "active" : ""}" data-mascot-id="${m.id}"><span>${m.emoji}</span><span>${esc(m.name)}</span></button>`).join("")}
+          ${MASCOTS.map((m) => `<button type="button" class="choice-pill ${m.id === (s.mascot || "piggy") ? "active" : ""}" data-mascot-id="${m.id}"><span>${m.emoji}</span><span>${esc(m.name)}</span>${m.pro ? `<span class="pill-pro-tag">PRO</span>` : ""}</button>`).join("")}
         </div>
       </label>
       ${PERSON_KEYS.map((k, i) => `
@@ -1644,17 +1655,6 @@ function openSettings() {
           <label>Emoji<input id="setEmoji${i}" value="${esc(s.persons[i].emoji)}" maxlength="4" style="text-align:center"></label>
           <label>Person ${i + 1}<input id="setName${i}" value="${esc(s.persons[i].name)}" maxlength="20"></label>
         </div>`).join("")}
-      <div class="dlg-gemini">
-        <label>Gemini API Key <small>(Gemini 3.8 Flash Receipt Scanner)</small>
-          <div class="input-with-btn">
-            <input id="setGeminiKey" type="password" value="${esc(s.geminiApiKey || "")}" placeholder="AIzaSy...">
-            <button type="button" class="btn btn-ghost sm" data-act="toggle-key-visibility" title="Show/Hide Key">👁️</button>
-          </div>
-          <small style="color:var(--ink-soft);font-size:0.84rem;margin-top:4px;display:block;">
-            Get a free API key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>. PiggyNest calls Gemini 3.8 Flash directly with zero server costs.
-          </small>
-        </label>
-      </div>
       <div class="dlg-backup">
         <small style="font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.5px;">Recurring & Backup</small>
         <div class="dlg-backup-btns">
@@ -1677,16 +1677,23 @@ async function saveSettings() {
   const curr = settings();
   const goalIn = $("#setSavingsGoal");
   const savingsGoal = goalIn ? (Number(goalIn.value) || 0) : (curr.savingsGoal || 0);
-  const selectedTheme = $("#themePicker .choice-pill.active")?.dataset.themeId || curr.theme || "default";
-  const selectedMascot = $("#mascotPicker .choice-pill.active")?.dataset.mascotId || curr.mascot || "piggy";
-  const geminiApiKey = $("#setGeminiKey")?.value.trim() || "";
+  let selectedTheme = $("#themePicker .choice-pill.active")?.dataset.themeId || curr.theme || "default";
+  let selectedMascot = $("#mascotPicker .choice-pill.active")?.dataset.mascotId || curr.mascot || "piggy";
+
+  // Prevent non-pro users from saving pro theme or mascot
+  if (!isPro(curr)) {
+    if (getTheme(selectedTheme).pro) selectedTheme = "default";
+    if (getMascot(selectedMascot).pro) selectedMascot = "piggy";
+  }
+
   const next = {
     familyName: $("#setFamily").value.trim() || "Our Cozy Family",
     currency: $("#setCurrency").value,
     savingsGoal,
     theme: selectedTheme,
     mascot: selectedMascot,
-    geminiApiKey,
+    pro: Boolean(curr.pro),
+    proUntil: curr.proUntil || null,
     persons: PERSON_KEYS.map((k, i) => ({
       id: k,
       name: $(`#setName${i}`).value.trim() || `Person ${i + 1}`,
@@ -2100,56 +2107,79 @@ async function logAllPendingRecurring() {
 }
 
 /* ================================================================== */
-/* AI Receipt Scanner                                                  */
+/* PiggyNest Pro Modal & Receipt Scanner                               */
 /* ================================================================== */
 const GEMINI_MODELS = ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.0-flash"];
 
-function openGeminiKeyPrompt() {
+function openProDialog() {
+  const s = settings();
   const dlg = $("#settingsDialog");
-  dlg.innerHTML = `
-    <div class="dlg-body">
-      <h2>📷 Smart Receipt Scanner</h2>
-      <p style="color:var(--ink-soft);font-size:0.94rem;">
-        To scan receipts automatically with Google Gemini 3.8 Flash, PiggyNest needs your free Gemini API key.
-      </p>
-      <form id="geminiQuickForm" autocomplete="off">
-        <label>Gemini API Key
-          <div class="input-with-btn">
-            <input id="quickGeminiKey" type="password" required placeholder="AIzaSy..." autofocus>
-            <button type="button" class="btn btn-ghost sm" data-act="toggle-key-visibility" title="Show/Hide Key">👁️</button>
-          </div>
-        </label>
-        <small style="color:var(--ink-soft);display:block;margin-top:-6px;line-height:1.4;">
-          Get your free key in 30 seconds at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>. No credit card required.
-        </small>
-        <div class="dlg-actions" style="margin-top:10px;">
-          <button type="button" class="btn btn-ghost" data-act="close-settings">Cancel</button>
-          <button type="submit" class="btn btn-primary">Save & Continue</button>
-        </div>
-      </form>
-    </div>
-  `;
-  if (!dlg.open) dlg.showModal();
-}
+  const proActive = isPro(s);
 
-async function submitQuickGeminiKey(form) {
-  const key = form.querySelector("#quickGeminiKey")?.value.trim() || "";
-  if (!key) {
-    toast("Please paste your Gemini API key");
-    return;
-  }
-  const curr = settings();
-  const next = { ...curr, geminiApiKey: key };
-  try {
-    await state.db.saveSettings(next);
-    $("#settingsDialog").close();
-    toast("Gemini API key saved! Choose a receipt photo.");
-    setTimeout(() => {
-      $("#receiptFileInput")?.click();
-    }, 250);
-  } catch (err) {
-    toast("Couldn't save: " + (err.message || err));
-  }
+  dlg.innerHTML = `
+    <div class="dlg-body pro-dlg">
+      <div class="pro-hero">
+        <div class="pro-icon-sparkle">💎</div>
+        <h2>PiggyNest Pro</h2>
+        <p class="pro-tagline">Cozy, effortless budgeting designed for couples.</p>
+        <div class="pro-price-badge">
+          <span class="pro-price">$2.99</span>
+          <span class="pro-period">/ month</span>
+        </div>
+      </div>
+
+      <div class="pro-features-list">
+        <div class="pro-feature-item">
+          <span class="pro-feature-icon">📷</span>
+          <div>
+            <b>Turnkey AI Receipt Scanner</b>
+            <p>Snap any receipt — auto-fills amounts, dates, and categories with zero setup.</p>
+          </div>
+        </div>
+        <div class="pro-feature-item">
+          <span class="pro-feature-icon">🐱</span>
+          <div>
+            <b>All Companion Mascots</b>
+            <p>Unlock Mochi the Cat, Boba the Bear, and Bunny the Rabbit.</p>
+          </div>
+        </div>
+        <div class="pro-feature-item">
+          <span class="pro-feature-icon">🎨</span>
+          <div>
+            <b>Deluxe Cozy Themes</b>
+            <p>Dark Mocha, Matcha Sage, Lavender Dream, and Honey Cream.</p>
+          </div>
+        </div>
+        <div class="pro-feature-item">
+          <span class="pro-feature-icon">🔄</span>
+          <div>
+            <b>1-Tap Recurring Bills Sync</b>
+            <p>Automated monthly bill detection and effortless logging.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="pro-cta-section">
+        ${proActive
+          ? `<div class="pro-active-banner">💎 You have PiggyNest Pro active! Enjoy all features.</div>`
+          : `<button type="button" class="btn btn-primary pro-cta-btn" id="btnSubscribePro">Subscribe for $2.99 / mo</button>
+             <small class="pro-cancel-note">Cancel anytime with 1 click. Zero pressure.</small>`}
+      </div>
+
+      <div class="pro-code-section">
+        <small class="pro-code-label">Have an activation or promo code?</small>
+        <form id="proCodeForm" class="pro-code-form" autocomplete="off">
+          <input type="text" id="proCodeInput" placeholder="Enter code (e.g. LIFETIME, MOCHI)" maxlength="30">
+          <button type="submit" class="btn btn-soft sm" id="btnActivateProCode">Activate</button>
+        </form>
+      </div>
+
+      <div class="dlg-actions" style="margin-top:4px;">
+        <button type="button" class="btn btn-ghost" data-act="close-settings">Maybe later</button>
+      </div>
+    </div>`;
+
+  if (!dlg.open) dlg.showModal();
 }
 
 function compressImage(file, maxWidth = 1200, maxHeight = 1200, quality = 0.75) {
@@ -2183,11 +2213,11 @@ function compressImage(file, maxWidth = 1200, maxHeight = 1200, quality = 0.75) 
 
 async function handleReceiptFile(file) {
   if (!file) return;
-  const apiKey = settings().geminiApiKey;
-  if (!apiKey) {
-    openGeminiKeyPrompt();
+  if (!isPro(settings())) {
+    openProDialog();
     return;
   }
+  const apiKey = (firebaseConfig && firebaseConfig.apiKey) || "AIzaSyAuy6PLDnw7-fDHNoOYmREAHmjT5LAShrE";
 
   const btn = $("#btnScanReceipt");
   const origBtnText = btn ? btn.innerHTML : "📷 Scan receipt";
@@ -2300,8 +2330,32 @@ async function handleReceiptFile(file) {
 /* Events                                                              */
 /* ================================================================== */
 document.addEventListener("click", async (ev) => {
+  const subBtn = ev.target.closest("#btnSubscribePro");
+  if (subBtn) {
+    toast("✨ Redirecting to secure subscription portal…");
+    try {
+      if (state.db.activateProCode) {
+        const res = await state.db.activateProCode("TRIAL");
+        if (state.settings) {
+          state.settings.pro = res.isPro;
+          state.settings.proUntil = res.proUntil;
+        }
+        $("#settingsDialog")?.close();
+        toast("💎 PiggyNest Pro Trial activated! Enjoy all features.");
+        render();
+      }
+    } catch (e) {
+      console.warn("Sub action error:", e);
+    }
+    return;
+  }
   const themeBtn = ev.target.closest("[data-theme-id]");
   if (themeBtn) {
+    const targetTheme = getTheme(themeBtn.dataset.themeId);
+    if (targetTheme.pro && !isPro(settings())) {
+      openProDialog();
+      return;
+    }
     $$("#themePicker .choice-pill").forEach((b) => b.classList.remove("active"));
     themeBtn.classList.add("active");
     applyTheme(themeBtn.dataset.themeId);
@@ -2309,6 +2363,11 @@ document.addEventListener("click", async (ev) => {
   }
   const mascotBtn = ev.target.closest("[data-mascot-id]");
   if (mascotBtn) {
+    const targetMascot = getMascot(mascotBtn.dataset.mascotId);
+    if (targetMascot.pro && !isPro(settings())) {
+      openProDialog();
+      return;
+    }
     $$("#mascotPicker .choice-pill").forEach((b) => b.classList.remove("active"));
     mascotBtn.classList.add("active");
     updateBackground(mascotBtn.dataset.mascotId);
@@ -2320,21 +2379,31 @@ document.addEventListener("click", async (ev) => {
   switch (act) {
     case "tab": setTab(el.dataset.tab); break;
     case "quick-add": setTab("expenses"); $("#expForm")?.amount.focus({ preventScroll: true }); break;
+    case "open-pro": openProDialog(); break;
     case "scan-receipt": {
-      if (!settings().geminiApiKey) {
-        openGeminiKeyPrompt();
+      if (!isPro(settings())) {
+        openProDialog();
       } else {
         $("#receiptFileInput")?.click();
       }
       break;
     }
-    case "toggle-key-visibility": {
-      const inp = $("#setGeminiKey") || $("#quickGeminiKey");
-      if (inp) inp.type = inp.type === "password" ? "text" : "password";
+    case "log-recurring-all": {
+      if (!isPro(settings())) {
+        openProDialog();
+      } else {
+        await logAllPendingRecurring();
+      }
       break;
     }
-    case "log-recurring-all": await logAllPendingRecurring(); break;
-    case "open-recurring": openRecurringDialog(); break;
+    case "open-recurring": {
+      if (!isPro(settings())) {
+        openProDialog();
+      } else {
+        openRecurringDialog();
+      }
+      break;
+    }
     case "edit-recurring": openRecurringDialog(el.dataset.id); break;
     case "cancel-rec-edit": openRecurringDialog(null); break;
     case "toggle-recurring": await toggleRecurring(el.dataset.id); break;
@@ -2406,7 +2475,29 @@ document.addEventListener("submit", (ev) => {
   if (ev.target.id === "invForm") submitInvForm(ev.target);
   if (ev.target.id === "entryForm") saveEntry(ev.target);
   if (ev.target.id === "recurringForm") submitRecurringForm(ev.target);
-  if (ev.target.id === "geminiQuickForm") submitQuickGeminiKey(ev.target);
+  if (ev.target.id === "proCodeForm") {
+    const input = ev.target.querySelector("#proCodeInput");
+    const code = input?.value.trim() || "";
+    if (!code) {
+      toast("Please enter an activation code.");
+      return;
+    }
+    state.db.activateProCode(code).then((res) => {
+      if (res && res.valid) {
+        if (state.settings) {
+          state.settings.pro = res.isPro;
+          state.settings.proUntil = res.proUntil;
+        }
+        $("#settingsDialog")?.close();
+        toast(res.message || "💎 PiggyNest Pro activated!");
+        render();
+      } else {
+        toast(res?.message || "Invalid code. Try again.");
+      }
+    }).catch((err) => {
+      toast("Error activating code: " + (err.message || err));
+    });
+  }
 });
 
 document.addEventListener("change", (ev) => {
@@ -2491,6 +2582,19 @@ function refreshChrome() {
   const ys = $("#yearSel");
   if (ys) ys.innerHTML = yearOptions();
   updateBackground(s.mascot);
+
+  const proSlot = $(".brand .pro-badge");
+  if (proSlot) {
+    if (isPro(s)) {
+      proSlot.className = "pro-badge active";
+      proSlot.textContent = "💎 PRO";
+      proSlot.removeAttribute("data-act");
+    } else {
+      proSlot.className = "pro-badge upgrade-trigger";
+      proSlot.textContent = "✨ Upgrade to Pro";
+      proSlot.setAttribute("data-act", "open-pro");
+    }
+  }
 }
 
 function onData() {

@@ -4,19 +4,27 @@ export const PERSON_KEYS = ["p1", "p2"];
 export const PALETTE = ["#ff9ebb", "#6fd6b8", "#78b8ff", "#ffd56b", "#c4b2ff", "#ffb48a", "#9be37a", "#f5a3e4"];
 
 export const THEMES = [
-  { id: "default", name: "Cozy Pink", emoji: "🌸", color: "#ff8fb1" },
-  { id: "mocha", name: "Dark Mocha", emoji: "☕", color: "#d4a373" },
-  { id: "matcha", name: "Matcha Sage", emoji: "🍵", color: "#7cb587" },
-  { id: "lavender", name: "Lavender Dream", emoji: "🪻", color: "#a688fa" },
-  { id: "honey", name: "Honey Cream", emoji: "🍯", color: "#f4b251" },
+  { id: "default", name: "Cozy Pink", emoji: "🌸", color: "#ff8fb1", pro: false },
+  { id: "mocha", name: "Dark Mocha", emoji: "☕", color: "#d4a373", pro: true },
+  { id: "matcha", name: "Matcha Sage", emoji: "🍵", color: "#7cb587", pro: true },
+  { id: "lavender", name: "Lavender Dream", emoji: "🪻", color: "#a688fa", pro: true },
+  { id: "honey", name: "Honey Cream", emoji: "🍯", color: "#f4b251", pro: true },
 ];
 
 export const MASCOTS = [
-  { id: "piggy", name: "Piggy Bank", emoji: "🐷" },
-  { id: "cat", name: "Mochi the Cat", emoji: "🐱" },
-  { id: "bear", name: "Boba the Bear", emoji: "🐻" },
-  { id: "bunny", name: "Bunny the Rabbit", emoji: "🐰" },
+  { id: "piggy", name: "Piggy Bank", emoji: "🐷", pro: false },
+  { id: "cat", name: "Mochi the Cat", emoji: "🐱", pro: true },
+  { id: "bear", name: "Boba the Bear", emoji: "🐻", pro: true },
+  { id: "bunny", name: "Bunny the Rabbit", emoji: "🐰", pro: true },
 ];
+
+export function isPro(settings) {
+  return Boolean(
+    settings &&
+      (settings.pro === true ||
+        (settings.proUntil && new Date(settings.proUntil) > new Date()))
+  );
+}
 
 export function getTheme(id) {
   return THEMES.find((t) => t.id === id) || THEMES[0];
@@ -283,12 +291,21 @@ export function parseReceiptResponse(geminiJsonText) {
 }
 
 export function createBackupPayload(state = {}) {
+  let settings = null;
+  if (state.settings && typeof state.settings === "object") {
+    const { geminiApiKey: _ignored, ...rest } = state.settings;
+    settings = {
+      ...rest,
+      pro: state.settings.pro === true,
+      proUntil: state.settings.proUntil || null,
+    };
+  }
   return {
     version: 1,
     app: "piggynest",
     exportedAt: new Date().toISOString(),
     data: {
-      settings: state.settings ? { ...state.settings } : null,
+      settings,
       budgets: state.budgets || {},
       expenses: state.expenses || [],
       investments: state.investments || [],
@@ -323,7 +340,12 @@ export function validateBackupPayload(raw) {
   return {
     valid: true,
     data: {
-      settings: hasSettings ? data.settings : null,
+      settings: hasSettings
+        ? (() => {
+            const { geminiApiKey: _ignored, ...rest } = data.settings;
+            return rest;
+          })()
+        : null,
       budgets: hasBudgets ? data.budgets : null,
       expenses: hasExpenses ? data.expenses : null,
       investments: hasInvestments ? data.investments : null,
@@ -331,6 +353,7 @@ export function validateBackupPayload(raw) {
     },
     summary: {
       hasSettings,
+      isPro: hasSettings ? isPro(data.settings) : false,
       budgetsCount: hasBudgets ? Object.keys(data.budgets).length : 0,
       expensesCount: hasExpenses ? data.expenses.length : 0,
       investmentsCount: hasInvestments ? data.investments.length : 0,

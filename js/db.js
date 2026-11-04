@@ -16,6 +16,33 @@ const isConfigured =
   !firebaseConfig.apiKey.startsWith("YOUR_") &&
   !String(firebaseConfig.projectId || "").startsWith("YOUR_");
 
+function evaluateProCode(rawCode) {
+  const code = String(rawCode || "").trim().toUpperCase();
+  if (!code) return { valid: false, message: "Please enter an activation code." };
+
+  // Lifetime codes
+  const lifetimeCodes = ["PIGGYPRO", "COZYPRO", "PRO2026", "LIFETIME", "VIPPRO"];
+  if (lifetimeCodes.includes(code) || code.startsWith("PRO-")) {
+    return { valid: true, isPro: true, proUntil: null, message: "PiggyNest Pro Lifetime Activated! 🐷✨" };
+  }
+
+  // 1-Year trial / promo code
+  if (code === "MOCHI" || code === "BOBA" || code === "YEAR2026") {
+    const until = new Date();
+    until.setFullYear(until.getFullYear() + 1);
+    return { valid: true, isPro: true, proUntil: until.toISOString(), message: "PiggyNest Pro 1-Year Access Activated! 🐱" };
+  }
+
+  // 30-Day trial code
+  if (code === "TESTPRO" || code === "MONTHLY" || code === "TRIAL") {
+    const until = new Date();
+    until.setDate(until.getDate() + 30);
+    return { valid: true, isPro: true, proUntil: until.toISOString(), message: "PiggyNest Pro 30-Day Trial Activated! 🌸" };
+  }
+
+  return { valid: false, message: "Invalid activation code. Please check and try again." };
+}
+
 export async function createDb() {
   return isConfigured ? createFirebaseDb() : createLocalDb();
 }
@@ -95,7 +122,14 @@ async function createFirebaseDb() {
     saveSavingsGoal: (amount) => fs.setDoc(settingsRef(), { savingsGoal: Number(amount) || 0 }, { merge: true }),
     saveTheme: (theme) => fs.setDoc(settingsRef(), { theme: String(theme || "default") }, { merge: true }),
     saveMascot: (mascot) => fs.setDoc(settingsRef(), { mascot: String(mascot || "piggy") }, { merge: true }),
-    saveGeminiKey: (apiKey) => fs.setDoc(settingsRef(), { geminiApiKey: String(apiKey || "").trim() }, { merge: true }),
+    saveProStatus: (isPro, proUntil) =>
+      fs.setDoc(settingsRef(), { pro: Boolean(isPro), proUntil: proUntil || null }, { merge: true }),
+    async activateProCode(code) {
+      const res = evaluateProCode(code);
+      if (!res.valid) return res;
+      await fs.setDoc(settingsRef(), { pro: res.isPro, proUntil: res.proUntil }, { merge: true });
+      return res;
+    },
     saveBudget: (year, b) => fs.setDoc(fs.doc(budgetsCol(), String(year)), b),
     addExpense: async (e) => {
       const ref = await fs.addDoc(expensesCol(), { ...e, createdAt: fs.serverTimestamp() });
@@ -127,8 +161,11 @@ async function createFirebaseDb() {
         if (payload.settings.mascot !== undefined) {
           settingsData.mascot = String(payload.settings.mascot || "piggy");
         }
-        if (payload.settings.geminiApiKey !== undefined) {
-          settingsData.geminiApiKey = String(payload.settings.geminiApiKey || "").trim();
+        if (payload.settings.pro !== undefined) {
+          settingsData.pro = Boolean(payload.settings.pro);
+        }
+        if (payload.settings.proUntil !== undefined) {
+          settingsData.proUntil = payload.settings.proUntil || null;
         }
         batch.set(settingsRef(), settingsData, { merge: true });
       }
@@ -230,9 +267,24 @@ function createLocalDb() {
       data.settings = { ...(data.settings || {}), mascot: String(mascot || "piggy") };
       persist();
     },
-    async saveGeminiKey(apiKey) {
-      data.settings = { ...(data.settings || {}), geminiApiKey: String(apiKey || "").trim() };
+    async saveProStatus(isPro, proUntil) {
+      data.settings = {
+        ...(data.settings || {}),
+        pro: Boolean(isPro),
+        proUntil: proUntil || null,
+      };
       persist();
+    },
+    async activateProCode(code) {
+      const res = evaluateProCode(code);
+      if (!res.valid) return res;
+      data.settings = {
+        ...(data.settings || {}),
+        pro: res.isPro,
+        proUntil: res.proUntil,
+      };
+      persist();
+      return res;
     },
     async saveBudget(year, b) {
       data.budgets[String(year)] = b;
@@ -294,8 +346,11 @@ function createLocalDb() {
         if (payload.settings.mascot !== undefined) {
           settingsData.mascot = String(payload.settings.mascot || "piggy");
         }
-        if (payload.settings.geminiApiKey !== undefined) {
-          settingsData.geminiApiKey = String(payload.settings.geminiApiKey || "").trim();
+        if (payload.settings.pro !== undefined) {
+          settingsData.pro = Boolean(payload.settings.pro);
+        }
+        if (payload.settings.proUntil !== undefined) {
+          settingsData.proUntil = payload.settings.proUntil || null;
         }
         data.settings = { ...(data.settings || {}), ...settingsData };
       }
