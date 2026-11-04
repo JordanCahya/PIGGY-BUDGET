@@ -122,8 +122,15 @@ async function createFirebaseDb() {
     saveSavingsGoal: (amount) => fs.setDoc(settingsRef(), { savingsGoal: Number(amount) || 0 }, { merge: true }),
     saveTheme: (theme) => fs.setDoc(settingsRef(), { theme: String(theme || "default") }, { merge: true }),
     saveMascot: (mascot) => fs.setDoc(settingsRef(), { mascot: String(mascot || "piggy") }, { merge: true }),
-    saveProStatus: (isPro, proUntil) =>
-      fs.setDoc(settingsRef(), { pro: Boolean(isPro), proUntil: proUntil || null }, { merge: true }),
+    saveProStatus: (isPro, proUntil, subscriptionId) => {
+      const update = { pro: Boolean(isPro), proUntil: proUntil || null };
+      if (subscriptionId !== undefined) {
+        update.subscriptionId = subscriptionId || null;
+      }
+      return fs.setDoc(settingsRef(), update, { merge: true });
+    },
+    cancelProSubscription: () =>
+      fs.setDoc(settingsRef(), { pro: false, proUntil: null, subscriptionId: null }, { merge: true }),
     async activateProCode(code) {
       const res = evaluateProCode(code);
       if (!res.valid) return res;
@@ -166,6 +173,9 @@ async function createFirebaseDb() {
         }
         if (payload.settings.proUntil !== undefined) {
           settingsData.proUntil = payload.settings.proUntil || null;
+        }
+        if (payload.settings.subscriptionId !== undefined) {
+          settingsData.subscriptionId = payload.settings.subscriptionId || null;
         }
         batch.set(settingsRef(), settingsData, { merge: true });
       }
@@ -267,11 +277,21 @@ function createLocalDb() {
       data.settings = { ...(data.settings || {}), mascot: String(mascot || "piggy") };
       persist();
     },
-    async saveProStatus(isPro, proUntil) {
+    async saveProStatus(isPro, proUntil, subscriptionId) {
       data.settings = {
         ...(data.settings || {}),
         pro: Boolean(isPro),
         proUntil: proUntil || null,
+        ...(subscriptionId !== undefined ? { subscriptionId: subscriptionId || null } : {}),
+      };
+      persist();
+    },
+    async cancelProSubscription() {
+      data.settings = {
+        ...(data.settings || {}),
+        pro: false,
+        proUntil: null,
+        subscriptionId: null,
       };
       persist();
     },
@@ -351,6 +371,9 @@ function createLocalDb() {
         }
         if (payload.settings.proUntil !== undefined) {
           settingsData.proUntil = payload.settings.proUntil || null;
+        }
+        if (payload.settings.subscriptionId !== undefined) {
+          settingsData.subscriptionId = payload.settings.subscriptionId || null;
         }
         data.settings = { ...(data.settings || {}), ...settingsData };
       }

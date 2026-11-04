@@ -1320,9 +1320,18 @@ body { background: var(--bg); background-attachment: scroll; }
   vertical-align: middle;
 }
 .pro-badge.active {
+  cursor: pointer;
   background: linear-gradient(135deg, #ffd700 0%, #ffaa00 100%);
   color: #5c3800;
   box-shadow: 0 2px 8px rgba(255, 170, 0, 0.35);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.pro-badge.active:hover {
+  transform: translateY(-1px) scale(1.02);
+  box-shadow: 0 4px 12px rgba(255, 170, 0, 0.45);
+}
+.pro-badge.active:active {
+  transform: translateY(1px);
 }
 .pro-badge.upgrade-trigger {
   cursor: pointer;
@@ -1512,3 +1521,63 @@ body { background: var(--bg); background-attachment: scroll; }
   color: #f7ede8;
 }
 
+/* ---------- PayPal & Active Pro Box ---------- */
+.paypal-container {
+  min-height: 52px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 320px;
+  margin: 0 auto;
+}
+.paypal-loading {
+  font-size: 0.88rem;
+  color: var(--ink-soft);
+  padding: 10px 0;
+}
+.pro-active-box {
+  background: var(--mint-soft);
+  border: 1.5px solid var(--mint, #6fd6b8);
+  border-radius: 14px;
+  padding: 12px 16px;
+  text-align: center;
+}
+.pro-active-box b {
+  color: #1a6e54;
+  font-size: 1.05rem;
+  display: block;
+  margin-bottom: 4px;
+}
+.pro-active-box p {
+  color: var(--ink);
+  font-size: 0.9rem;
+  margin: 0;
+  line-height: 1.45;
+}
+.pro-active-box code {
+  background: rgba(0, 0, 0, 0.06);
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  font-family: monospace;
+}
+
+[data-theme="mocha"] .pro-active-box {
+  background: #1c2b24;
+  border-color: #2e4a3c;
+}
+[data-theme="mocha"] .pro-active-box b {
+  color: #8de3c2;
+}
+[data-theme="mocha"] .pro-active-box p {
+  color: #f7ede8;
+}
+[data-theme="mocha"] .pro-active-box code {
+  background: #283a31;
+  color: #8de3c2;
+}
+[data-theme="mocha"] .paypal-loading {
+  color: #c4b5ad;
+}

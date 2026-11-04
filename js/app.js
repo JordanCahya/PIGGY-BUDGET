@@ -7,6 +7,10 @@ import {
   THEMES,
   MASCOTS,
   isPro,
+  getProRemainingDays,
+  PRO_PRICE,
+  PAYPAL_PLAN_ID,
+  PAYPAL_CLIENT_ID,
   getTheme,
   getMascot,
   defaultCategories,
@@ -92,6 +96,7 @@ const DEFAULT_SETTINGS = {
   mascot: "piggy",
   pro: false,
   proUntil: null,
+  subscriptionId: null,
   persons: [
     { id: "p1", name: "Mommy", emoji: "🌸" },
     { id: "p2", name: "Daddy", emoji: "🌿" },
@@ -109,8 +114,20 @@ function settings() {
     mascot: s.mascot || "piggy",
     pro: Boolean(s.pro || false),
     proUntil: s.proUntil || null,
+    subscriptionId: s.subscriptionId || null,
     persons,
   };
+}
+
+function proBadgeHtml(s) {
+  if (isPro(s)) {
+    const days = getProRemainingDays(s);
+    if (days !== null && days > 0) {
+      return `<button type="button" class="pro-badge active" data-act="open-pro">💎 PRO (${days}d left)</button>`;
+    }
+    return `<button type="button" class="pro-badge active" data-act="open-pro">💎 PRO</button>`;
+  }
+  return `<button type="button" class="pro-badge upgrade-trigger" data-act="open-pro">✨ Upgrade to Pro</button>`;
 }
 
 function applyTheme(themeId) {
@@ -208,7 +225,7 @@ function shellHtml() {
       <div class="brand">
         <span class="brand-pig">${esc(getMascot(s.mascot).emoji)}</span>
         <div><b>${esc(s.familyName)}</b><small>PiggyNest</small></div>
-        ${isPro(s) ? `<span class="pro-badge active">💎 PRO</span>` : `<button type="button" class="pro-badge upgrade-trigger" data-act="open-pro">✨ Upgrade to Pro</button>`}
+        ${proBadgeHtml(s)}
       </div>
       <div class="controls">
         <select id="yearSel" aria-label="Year">${yearOptions()}</select>
@@ -1626,14 +1643,11 @@ async function deleteInvestment(id) {
 function openSettings() {
   const s = settings();
   const dlg = $("#settingsDialog");
-  const proBadge = isPro(s)
-    ? `<span class="pro-badge active">💎 PRO</span>`
-    : `<button type="button" class="pro-badge upgrade-trigger" data-act="open-pro">✨ Upgrade to Pro</button>`;
   dlg.innerHTML = `
     <div class="dlg-body">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
         <h2 style="margin:0;">Family settings</h2>
-        ${proBadge}
+        ${proBadgeHtml(s)}
       </div>
       <label>Family name<input id="setFamily" value="${esc(s.familyName)}" maxlength="30"></label>
       <label>Currency
@@ -1656,9 +1670,8 @@ function openSettings() {
           <label>Person ${i + 1}<input id="setName${i}" value="${esc(s.persons[i].name)}" maxlength="20"></label>
         </div>`).join("")}
       <div class="dlg-backup">
-        <small style="font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.5px;">Recurring & Backup</small>
+        <small style="font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.5px;">Backup & Export</small>
         <div class="dlg-backup-btns">
-          <button type="button" class="btn btn-soft" data-act="open-recurring">📅 Manage recurring bills</button>
           <button type="button" class="btn btn-soft" data-act="export-json">💾 Backup all data (JSON)</button>
           <button type="button" class="btn btn-soft" data-act="restore-json-btn">📥 Restore from JSON</button>
           <input type="file" id="restoreJsonFile" accept=".json,application/json" class="hide">
@@ -1694,6 +1707,7 @@ async function saveSettings() {
     mascot: selectedMascot,
     pro: Boolean(curr.pro),
     proUntil: curr.proUntil || null,
+    subscriptionId: curr.subscriptionId || null,
     persons: PERSON_KEYS.map((k, i) => ({
       id: k,
       name: $(`#setName${i}`).value.trim() || `Person ${i + 1}`,
@@ -2111,20 +2125,124 @@ async function logAllPendingRecurring() {
 /* ================================================================== */
 const GEMINI_MODELS = ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.0-flash"];
 
+function loadPayPalSdk(callback) {
+  if (window.paypal && typeof window.paypal.Buttons === "function") {
+    callback();
+    return;
+  }
+  const existing = document.querySelector('script[src*="paypal.com/sdk/js"]');
+  if (existing) {
+    existing.addEventListener("load", callback);
+    return;
+  }
+  const script = document.createElement("script");
+  script.src = `https://www.paypal.com/sdk/js?client-id=${PAYPAL_CLIENT_ID}&vault=true&intent=subscription`;
+  script.onload = callback;
+  script.onerror = () => {
+    console.error("PayPal SDK failed to load");
+    const container = $("#paypal-button-container");
+    if (container) {
+      container.innerHTML = `<p style="color:var(--ink-soft);font-size:0.85rem;margin:4px 0;">PayPal checkout is offline. You can still use an activation code or free trial below.</p>`;
+    }
+  };
+  document.head.appendChild(script);
+}
+
+function renderPayPalButtons(dlg) {
+  const container = $("#paypal-button-container", dlg);
+  if (!container || !window.paypal || typeof window.paypal.Buttons !== "function") return;
+  container.innerHTML = "";
+  try {
+    window.paypal.Buttons({
+      style: {
+        shape: "rect",
+        color: "silver",
+        layout: "horizontal",
+        label: "subscribe"
+      },
+      createSubscription: function(data, actions) {
+        return actions.subscription.create({
+          plan_id: PAYPAL_PLAN_ID
+        });
+      },
+      onApprove: async function(data, actions) {
+        try {
+          await state.db.saveProStatus(true, null, data.subscriptionID);
+          if (state.settings) {
+            state.settings.pro = true;
+            state.settings.proUntil = null;
+            state.settings.subscriptionId = data.subscriptionID;
+          }
+          toast("💎 Welcome to PiggyNest Pro!");
+          dlg.close();
+          render();
+        } catch (err) {
+          console.error("Error saving Pro status:", err);
+          toast("Subscribed on PayPal! Error saving local state: " + err.message);
+        }
+      },
+      onError: function(err) {
+        console.error("PayPal Error:", err);
+        toast("Subscription could not be processed. Please try again.");
+      }
+    }).render("#paypal-button-container");
+  } catch (e) {
+    console.error("Error rendering PayPal Buttons:", e);
+  }
+}
+
 function openProDialog() {
   const s = settings();
   const dlg = $("#settingsDialog");
   const proActive = isPro(s);
+  const days = getProRemainingDays(s);
+
+  let statusSection = "";
+  if (proActive) {
+    if (s.subscriptionId) {
+      statusSection = `
+        <div class="pro-active-box">
+          <b>Active Subscription</b>
+          <p>Plan: ${esc(PRO_PRICE)}<br>Subscription ID: <code>${esc(s.subscriptionId)}</code></p>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:6px;">
+          <a href="https://www.paypal.com/myaccount/autopay/" target="_blank" rel="noopener" class="btn btn-soft">Manage on PayPal</a>
+          <button type="button" class="btn btn-ghost sm" data-act="cancel-pro-sub">Stop subscription in app</button>
+        </div>`;
+    } else if (days !== null) {
+      statusSection = `
+        <div class="pro-active-box">
+          <b>Pro Trial Active</b>
+          <p>${days} day${days === 1 ? "" : "s"} remaining</p>
+        </div>
+        <div style="margin-top:6px;">
+          <button type="button" class="btn btn-soft" data-act="cancel-pro-sub">Cancel trial</button>
+        </div>`;
+    } else {
+      statusSection = `
+        <div class="pro-active-box">
+          <b>Lifetime Pro Active</b>
+          <p>All features unlocked forever ✨</p>
+        </div>`;
+    }
+  } else {
+    statusSection = `
+      <div class="pro-cta-section">
+        <div id="paypal-button-container" class="paypal-container">
+          <span class="paypal-loading">Loading PayPal checkout…</span>
+        </div>
+        <button type="button" class="btn btn-ghost sm" id="btnTestTrial" style="margin-top:4px;">Or start 30-day free trial</button>
+      </div>`;
+  }
 
   dlg.innerHTML = `
     <div class="dlg-body pro-dlg">
       <div class="pro-hero">
         <div class="pro-icon-sparkle">💎</div>
-        <h2>PiggyNest Pro</h2>
-        <p class="pro-tagline">Cozy, effortless budgeting designed for couples.</p>
+        <h2>${proActive ? "PiggyNest Pro Active" : "PiggyNest Pro"}</h2>
+        <p class="pro-tagline">${proActive ? "Thank you for supporting PiggyNest!" : "Cozy, effortless budgeting designed for couples."}</p>
         <div class="pro-price-badge">
-          <span class="pro-price">$2.99</span>
-          <span class="pro-period">/ month</span>
+          <span class="pro-price">${esc(PRO_PRICE)}</span>
         </div>
       </div>
 
@@ -2159,12 +2277,7 @@ function openProDialog() {
         </div>
       </div>
 
-      <div class="pro-cta-section">
-        ${proActive
-          ? `<div class="pro-active-banner">💎 You have PiggyNest Pro active! Enjoy all features.</div>`
-          : `<button type="button" class="btn btn-primary pro-cta-btn" id="btnSubscribePro">Subscribe for $2.99 / mo</button>
-             <small class="pro-cancel-note">Cancel anytime with 1 click. Zero pressure.</small>`}
-      </div>
+      ${statusSection}
 
       <div class="pro-code-section">
         <small class="pro-code-label">Have an activation or promo code?</small>
@@ -2175,11 +2288,17 @@ function openProDialog() {
       </div>
 
       <div class="dlg-actions" style="margin-top:4px;">
-        <button type="button" class="btn btn-ghost" data-act="close-settings">Maybe later</button>
+        <button type="button" class="btn btn-ghost" data-act="close-settings">Close</button>
       </div>
     </div>`;
 
   if (!dlg.open) dlg.showModal();
+
+  if (!proActive) {
+    loadPayPalSdk(() => {
+      renderPayPalButtons(dlg);
+    });
+  }
 }
 
 function compressImage(file, maxWidth = 1200, maxHeight = 1200, quality = 0.75) {
@@ -2330,22 +2449,21 @@ async function handleReceiptFile(file) {
 /* Events                                                              */
 /* ================================================================== */
 document.addEventListener("click", async (ev) => {
-  const subBtn = ev.target.closest("#btnSubscribePro");
-  if (subBtn) {
-    toast("✨ Redirecting to secure subscription portal…");
+  const testTrialBtn = ev.target.closest("#btnTestTrial");
+  if (testTrialBtn) {
     try {
-      if (state.db.activateProCode) {
-        const res = await state.db.activateProCode("TRIAL");
-        if (state.settings) {
-          state.settings.pro = res.isPro;
-          state.settings.proUntil = res.proUntil;
-        }
-        $("#settingsDialog")?.close();
-        toast("💎 PiggyNest Pro Trial activated! Enjoy all features.");
-        render();
+      const res = await state.db.activateProCode("TRIAL");
+      if (state.settings) {
+        state.settings.pro = res.isPro;
+        state.settings.proUntil = res.proUntil;
+        state.settings.subscriptionId = null;
       }
+      $("#settingsDialog")?.close();
+      toast("💎 PiggyNest Pro 30-day trial activated! Enjoy all features.");
+      render();
     } catch (e) {
-      console.warn("Sub action error:", e);
+      console.warn("Trial error:", e);
+      toast("Error starting trial: " + (e.message || e));
     }
     return;
   }
@@ -2380,6 +2498,50 @@ document.addEventListener("click", async (ev) => {
     case "tab": setTab(el.dataset.tab); break;
     case "quick-add": setTab("expenses"); $("#expForm")?.amount.focus({ preventScroll: true }); break;
     case "open-pro": openProDialog(); break;
+    case "cancel-pro-sub": {
+      if (confirm("Are you sure you want to stop PiggyNest Pro?")) {
+        try {
+          await state.db.cancelProSubscription();
+          const curr = settings();
+          let nextTheme = curr.theme;
+          let nextMascot = curr.mascot;
+          let needSettingsUpdate = false;
+          if (getTheme(nextTheme).pro) {
+            nextTheme = "default";
+            needSettingsUpdate = true;
+          }
+          if (getMascot(nextMascot).pro) {
+            nextMascot = "piggy";
+            needSettingsUpdate = true;
+          }
+          if (needSettingsUpdate) {
+            await state.db.saveSettings({
+              ...curr,
+              theme: nextTheme,
+              mascot: nextMascot,
+              pro: false,
+              proUntil: null,
+              subscriptionId: null,
+            });
+            applyTheme(nextTheme);
+            updateBackground(nextMascot);
+          }
+          if (state.settings) {
+            state.settings.pro = false;
+            state.settings.proUntil = null;
+            state.settings.subscriptionId = null;
+            state.settings.theme = nextTheme;
+            state.settings.mascot = nextMascot;
+          }
+          $("#settingsDialog")?.close();
+          toast("PiggyNest Pro ended");
+          render();
+        } catch (e) {
+          toast("Couldn't stop subscription: " + (e.message || e));
+        }
+      }
+      break;
+    }
     case "scan-receipt": {
       if (!isPro(settings())) {
         openProDialog();
@@ -2487,6 +2649,7 @@ document.addEventListener("submit", (ev) => {
         if (state.settings) {
           state.settings.pro = res.isPro;
           state.settings.proUntil = res.proUntil;
+          state.settings.subscriptionId = null;
         }
         $("#settingsDialog")?.close();
         toast(res.message || "💎 PiggyNest Pro activated!");
@@ -2586,9 +2749,10 @@ function refreshChrome() {
   const proSlot = $(".brand .pro-badge");
   if (proSlot) {
     if (isPro(s)) {
+      const days = getProRemainingDays(s);
       proSlot.className = "pro-badge active";
-      proSlot.textContent = "💎 PRO";
-      proSlot.removeAttribute("data-act");
+      proSlot.textContent = (days !== null && days > 0) ? `💎 PRO (${days}d left)` : "💎 PRO";
+      proSlot.setAttribute("data-act", "open-pro");
     } else {
       proSlot.className = "pro-badge upgrade-trigger";
       proSlot.textContent = "✨ Upgrade to Pro";

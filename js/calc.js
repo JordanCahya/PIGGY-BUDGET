@@ -18,12 +18,41 @@ export const MASCOTS = [
   { id: "bunny", name: "Bunny the Rabbit", emoji: "🐰", pro: true },
 ];
 
+export const PRO_PRICE = "$2.99 / month";
+export const PAYPAL_PLAN_ID = "P-0TR67131SL0448510NLVTYGI";
+export const PAYPAL_CLIENT_ID = "BAAHSPhp62grKR7PYtxRFB1-GtBotGFDT3_LbQ-eKExdQNvLDyAkpDmY9_WQHethJN7amo5N7arDDoaYRY";
+
 export function isPro(settings) {
-  return Boolean(
-    settings &&
-      (settings.pro === true ||
-        (settings.proUntil && new Date(settings.proUntil) > new Date()))
-  );
+  if (!settings || typeof settings !== "object") return false;
+  if (settings.pro === true) {
+    if (settings.proUntil) {
+      const until = new Date(settings.proUntil);
+      if (!isNaN(until.getTime())) {
+        return until > new Date();
+      }
+    }
+    return true;
+  }
+  if (settings.proUntil) {
+    const until = new Date(settings.proUntil);
+    return !isNaN(until.getTime()) && until > new Date();
+  }
+  return false;
+}
+
+export function getProRemainingDays(settings) {
+  if (!settings || typeof settings !== "object") return 0;
+  if (!settings.proUntil) {
+    return settings.pro === true ? null : 0;
+  }
+  const until = new Date(settings.proUntil);
+  if (isNaN(until.getTime())) {
+    return settings.pro === true ? null : 0;
+  }
+  const now = new Date();
+  const diffMs = until.getTime() - now.getTime();
+  if (diffMs <= 0) return 0;
+  return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
 }
 
 export function getTheme(id) {
@@ -298,6 +327,7 @@ export function createBackupPayload(state = {}) {
       ...rest,
       pro: state.settings.pro === true,
       proUntil: state.settings.proUntil || null,
+      subscriptionId: state.settings.subscriptionId || null,
     };
   }
   return {
