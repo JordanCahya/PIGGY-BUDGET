@@ -2164,7 +2164,7 @@ function renderPayPalButtons(dlg) {
       style: {
         shape: "rect",
         color: "silver",
-        layout: "horizontal",
+        layout: "vertical",
         label: "subscribe"
       },
       createSubscription: function(data, actions) {
