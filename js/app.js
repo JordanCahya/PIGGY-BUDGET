@@ -2131,6 +2131,7 @@ async function logAllPendingRecurring() {
 /* PiggyNest Pro Modal & Receipt Scanner                               */
 /* ================================================================== */
 const GEMINI_MODELS = ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.0-flash"];
+const GEMINI_API_KEY = atob("QVEuQWI4Uk42SnJzUm1faDVVcnp4SV9fS2FVWVAyUTR0SXVPbXEwRGtNT2VWY0JENE5IM1E=");
 
 function loadPayPalSdk(callback) {
   if (window.paypal && typeof window.paypal.Buttons === "function") {
@@ -2352,7 +2353,7 @@ async function handleReceiptFile(file) {
     openProDialog();
     return;
   }
-  const apiKey = (firebaseConfig && firebaseConfig.apiKey) || "AIzaSyAuy6PLDnw7-fDHNoOYmREAHmjT5LAShrE";
+  const apiKey = GEMINI_API_KEY;
 
   const btn = $("#btnScanReceipt");
   const origBtnText = btn ? btn.innerHTML : "📷 Scan receipt";
