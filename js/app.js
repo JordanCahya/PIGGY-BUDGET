@@ -2130,7 +2130,13 @@ async function logAllPendingRecurring() {
 /* ================================================================== */
 /* PiggyNest Pro Modal & Receipt Scanner                               */
 /* ================================================================== */
-const GEMINI_MODELS = ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.0-flash"];
+const GEMINI_MODELS = [
+  "gemini-3.5-flash-lite",
+  "gemini-3.5-flash",
+  "gemini-3.6-flash",
+  "gemini-3.1-flash-lite",
+  "gemini-3.8-flash",
+];
 const GEMINI_API_KEY = atob("QVEuQWI4Uk42SnJzUm1faDVVcnp4SV9fS2FVWVAyUTR0SXVPbXEwRGtNT2VWY0JENE5IM1E=");
 
 function loadPayPalSdk(callback) {
@@ -2397,17 +2403,18 @@ async function handleReceiptFile(file) {
           break;
         }
 
-        // If 404 (model not found / deprecated for this API key tier), attempt next model
-        if (res.status === 404) {
-          console.warn(`Gemini model ${model} returned 404, attempting fallback model...`);
-          lastError = new Error(json?.error?.message || `Model ${model} not found (404)`);
+        // Fallback to next model if 404 (not found), 503 (high demand/overloaded), 429 (rate limit), or 500
+        if ([404, 429, 500, 502, 503, 504].includes(res.status)) {
+          console.warn(`Gemini model ${model} returned HTTP ${res.status}, attempting fallback model...`);
+          lastError = new Error(json?.error?.message || `Model ${model} unavailable (HTTP ${res.status})`);
           continue;
         }
 
         const errDetail = json?.error?.message || `HTTP ${res.status}`;
         throw new Error(errDetail);
       } catch (e) {
-        if (e.message && e.message.includes("404")) {
+        const msg = String(e?.message || "");
+        if (msg.includes("404") || msg.includes("503") || msg.includes("429") || msg.includes("unavailable") || msg.includes("overloaded")) {
           lastError = e;
           continue;
         }
