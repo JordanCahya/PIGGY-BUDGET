@@ -1637,3 +1637,164 @@ body { background: var(--bg); background-attachment: scroll; }
 [data-theme="mocha"] .pro-active-box.admin b {
   color: #d8b4fe;
 }
+
+/* ---------- Payment Methods & Due Date Alerts ---------- */
+.payment-method-group {
+  margin-top: 4px;
+}
+.payment-pill span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.payment-extra {
+  margin-top: 6px;
+  animation: fadeIn 0.15s ease-out;
+}
+.two-col-inline {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.exp-pm-tag {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--bg-soft, rgba(0,0,0,0.03));
+  white-space: nowrap;
+}
+.exp-pm-tag.pm-cash {
+  color: var(--ink-soft);
+}
+.exp-pm-tag.pm-credit {
+  color: #2b6cb0;
+  border-color: #bee3f8;
+  background: #ebf8ff;
+}
+.exp-pm-tag.pm-installment {
+  color: #b7791f;
+  border-color: #fefcbf;
+  background: #fffff0;
+}
+
+.due-alert-card {
+  border: 1.5px solid var(--butter, #ffd56b);
+  background: var(--butter-soft, #fffdf5);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+.due-alert-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.due-alert-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.due-alert-title h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  color: var(--ink);
+}
+.due-alert-list {
+  display: grid;
+  gap: 8px;
+}
+.due-alert-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: #fff;
+  border: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+.due-alert-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  flex: 1;
+}
+.due-alert-badge {
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  padding: 2px 7px;
+  border-radius: 999px;
+}
+.badge-today {
+  background: #fed7d7;
+  color: #9b2c2c;
+  border: 1px solid #feb2b2;
+}
+.badge-upcoming {
+  background: #feebc8;
+  color: #9c4221;
+  border: 1px solid #fbd38d;
+}
+.badge-overdue {
+  background: #feebc8;
+  color: #c53030;
+  border: 1px solid #feb2b2;
+}
+.due-alert-today {
+  border-left: 4px solid #e53e3e;
+}
+.due-alert-upcoming {
+  border-left: 4px solid #dd6b20;
+}
+.due-alert-overdue {
+  border-left: 4px solid #e53e3e;
+  background: #fffafa;
+}
+.due-alert-amt {
+  font-weight: 800;
+  color: var(--ink);
+}
+
+[data-theme="mocha"] .exp-pm-tag.pm-credit {
+  color: #90cdf4;
+  border-color: #2c5282;
+  background: #1a365d;
+}
+[data-theme="mocha"] .exp-pm-tag.pm-installment {
+  color: #f6e05e;
+  border-color: #744210;
+  background: #3b2a0c;
+}
+[data-theme="mocha"] .due-alert-card {
+  border-color: #5c473f;
+  background: #2b2320;
+}
+[data-theme="mocha"] .due-alert-item {
+  background: #382c26;
+  border-color: #4a3a33;
+}
+[data-theme="mocha"] .due-alert-overdue {
+  background: #3d2826;
+}
+[data-theme="mocha"] .badge-today {
+  background: #521b1b;
+  color: #feb2b2;
+  border-color: #742a2a;
+}
+[data-theme="mocha"] .badge-upcoming {
+  background: #4a2810;
+  color: #fbd38d;
+  border-color: #652b19;
+}
+[data-theme="mocha"] .badge-overdue {
+  background: #521b1b;
+  color: #feb2b2;
+  border-color: #742a2a;
+}

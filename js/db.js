@@ -43,6 +43,37 @@ function evaluateProCode(rawCode) {
   return { valid: false, message: "Invalid activation code. Subscribe via PayPal to get your 30-day $0 trial!" };
 }
 
+function sanitizeExpense(e) {
+  const out = { ...e };
+  if (out.paymentMethod !== undefined) {
+    out.paymentMethod = ["cash", "credit_card", "installment"].includes(out.paymentMethod) ? out.paymentMethod : "cash";
+  }
+  if (out.cardName !== undefined) {
+    out.cardName = String(out.cardName || "").trim();
+  }
+  if (out.installmentMonths !== undefined) {
+    out.installmentMonths = Number(out.installmentMonths) || null;
+  }
+  if (out.installmentCurrent !== undefined) {
+    out.installmentCurrent = Number(out.installmentCurrent) || null;
+  }
+  return out;
+}
+
+function sanitizeRecurring(bill) {
+  const out = { ...bill };
+  if (out.paymentMethod !== undefined) {
+    out.paymentMethod = ["cash", "credit_card", "installment"].includes(out.paymentMethod) ? out.paymentMethod : "cash";
+  }
+  if (out.cardName !== undefined) {
+    out.cardName = String(out.cardName || "").trim();
+  }
+  if (out.installmentMonths !== undefined) {
+    out.installmentMonths = Number(out.installmentMonths) || null;
+  }
+  return out;
+}
+
 export async function createDb() {
   return isConfigured ? createFirebaseDb() : createLocalDb();
 }
@@ -142,10 +173,10 @@ async function createFirebaseDb() {
     },
     saveBudget: (year, b) => fs.setDoc(fs.doc(budgetsCol(), String(year)), b),
     addExpense: async (e) => {
-      const ref = await fs.addDoc(expensesCol(), { ...e, createdAt: fs.serverTimestamp() });
+      const ref = await fs.addDoc(expensesCol(), { ...sanitizeExpense(e), createdAt: fs.serverTimestamp() });
       return ref.id;
     },
-    updateExpense: (id, e) => fs.setDoc(fs.doc(expensesCol(), id), e, { merge: true }),
+    updateExpense: (id, e) => fs.setDoc(fs.doc(expensesCol(), id), sanitizeExpense(e), { merge: true }),
     deleteExpense: (id) => fs.deleteDoc(fs.doc(expensesCol(), id)),
 
     addInvestment: async (inv) => {
@@ -156,10 +187,10 @@ async function createFirebaseDb() {
     deleteInvestment: (id) => fs.deleteDoc(fs.doc(investmentsCol(), id)),
 
     addRecurring: async (bill) => {
-      const ref = await fs.addDoc(recurringCol(), { ...bill, createdAt: fs.serverTimestamp() });
+      const ref = await fs.addDoc(recurringCol(), { ...sanitizeRecurring(bill), createdAt: fs.serverTimestamp() });
       return ref.id;
     },
-    updateRecurring: (id, bill) => fs.setDoc(fs.doc(recurringCol(), id), bill, { merge: true }),
+    updateRecurring: (id, bill) => fs.setDoc(fs.doc(recurringCol(), id), sanitizeRecurring(bill), { merge: true }),
     deleteRecurring: (id) => fs.deleteDoc(fs.doc(recurringCol(), id)),
     async restoreAll(payload) {
       const batch = fs.writeBatch(db);
@@ -319,13 +350,13 @@ function createLocalDb() {
     },
     async addExpense(e) {
       const id = newId();
-      data.expenses.push({ ...e, id });
+      data.expenses.push({ ...sanitizeExpense(e), id });
       persist();
       return id;
     },
     async updateExpense(id, e) {
       const i = data.expenses.findIndex((x) => x.id === id);
-      if (i >= 0) data.expenses[i] = { ...data.expenses[i], ...e };
+      if (i >= 0) data.expenses[i] = { ...data.expenses[i], ...sanitizeExpense(e) };
       persist();
     },
     async deleteExpense(id) {
@@ -351,13 +382,13 @@ function createLocalDb() {
 
     async addRecurring(bill) {
       const id = newId();
-      data.recurring.push({ ...bill, id });
+      data.recurring.push({ ...sanitizeRecurring(bill), id });
       persist();
       return id;
     },
     async updateRecurring(id, bill) {
       const i = data.recurring.findIndex((x) => x.id === id);
-      if (i >= 0) data.recurring[i] = { ...data.recurring[i], ...bill, id };
+      if (i >= 0) data.recurring[i] = { ...data.recurring[i], ...sanitizeRecurring(bill), id };
       persist();
     },
     async deleteRecurring(id) {

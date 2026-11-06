@@ -3,6 +3,12 @@
 export const PERSON_KEYS = ["p1", "p2"];
 export const PALETTE = ["#ff9ebb", "#6fd6b8", "#78b8ff", "#ffd56b", "#c4b2ff", "#ffb48a", "#9be37a", "#f5a3e4"];
 
+export const PAYMENT_METHODS = [
+  { id: "cash", name: "Cash", emoji: "💵" },
+  { id: "credit_card", name: "Credit Card", emoji: "💳" },
+  { id: "installment", name: "Installment", emoji: "⏳" },
+];
+
 export const THEMES = [
   { id: "default", name: "Cozy Pink", emoji: "🌸", color: "#ff8fb1", pro: false },
   { id: "mocha", name: "Dark Mocha", emoji: "☕", color: "#d4a373", pro: true },
@@ -177,8 +183,43 @@ export function normalizeRecurringBills(bills) {
       paidBy: b?.paidBy === "both" || b?.paidBy === "p2" ? b.paidBy : "p1",
       dayOfMonth,
       active: b?.active !== false,
+      paymentMethod: ["cash", "credit_card", "installment"].includes(b?.paymentMethod)
+        ? b.paymentMethod
+        : "cash",
+      cardName: String(b?.cardName || "").trim(),
+      installmentMonths: Number(b?.installmentMonths) || null,
     };
   });
+}
+
+export function getDueRecurringAlerts(recurringBills, expenses = [], targetDate = new Date()) {
+  const d = targetDate instanceof Date ? targetDate : new Date(targetDate);
+  const targetYear = d.getFullYear();
+  const targetMonth = d.getMonth();
+  const targetDay = d.getDate();
+
+  const unloggedBills = findPendingRecurringBills(recurringBills, expenses, targetYear, targetMonth);
+
+  const dDay = [];
+  const upcoming = [];
+  const overdue = [];
+
+  for (const b of unloggedBills) {
+    const diff = b.dayOfMonth - targetDay;
+    if (diff === 0) {
+      dDay.push({ ...b, diff, status: "d_day" });
+    } else if (diff > 0 && diff <= 3) {
+      upcoming.push({ ...b, diff, status: "upcoming" });
+    } else if (diff < 0) {
+      const daysOverdue = Math.abs(diff);
+      overdue.push({ ...b, diff: daysOverdue, daysOverdue, status: "overdue" });
+    }
+  }
+
+  upcoming.sort((a, b) => a.diff - b.diff);
+  overdue.sort((a, b) => b.daysOverdue - a.daysOverdue);
+
+  return { dDay, upcoming, overdue };
 }
 
 export function findPendingRecurringBills(recurringBills, expenses = [], year, month) {

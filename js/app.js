@@ -4,6 +4,7 @@ import { firebaseConfig } from "../firebase-config.js";
 import {
   PERSON_KEYS,
   PALETTE,
+  PAYMENT_METHODS,
   THEMES,
   MASCOTS,
   isAdmin,
@@ -19,6 +20,7 @@ import {
   normalizeBudget,
   normalizeRecurringBills,
   findPendingRecurringBills,
+  getDueRecurringAlerts,
   buildReceiptPrompt,
   parseReceiptResponse,
   calc,
@@ -76,7 +78,52 @@ const state = {
   editingId: null,
   lastCat: null,
   lastPaidBy: "p1",
+  lastPaymentMethod: "cash",
+  lastCardName: "",
 };
+
+let notifiedDDayToday = false;
+
+function checkDDayNotifications() {
+  if (notifiedDDayToday || !state.loaded.recurring || !state.loaded.expenses) return;
+  const alerts = getDueRecurringAlerts(state.recurring, state.expenses, new Date());
+  if (alerts.dDay && alerts.dDay.length > 0) {
+    if ("Notification" in window && Notification.permission === "granted") {
+      try {
+        new Notification("PiggyNest: Bill Due Today! 📅", {
+          body: `Due today: ${alerts.dDay.map((b) => b.name).join(", ")}`,
+          icon: "icons/icon-192.svg",
+        });
+        notifiedDDayToday = true;
+      } catch (e) {
+        console.warn("Notification error:", e);
+      }
+    }
+  }
+}
+
+function paymentBadgeHtml(e) {
+  const pm = e.paymentMethod || "cash";
+  if (pm === "credit_card") {
+    return `<span class="chip exp-pm-tag pm-credit">💳 ${esc(e.cardName || "Credit Card")}</span>`;
+  }
+  if (pm === "installment") {
+    const c = e.installmentCurrent || 1;
+    const m = e.installmentMonths || 12;
+    const namePrefix = e.cardName ? `${esc(e.cardName)} ` : "";
+    return `<span class="chip exp-pm-tag pm-installment">⏳ ${namePrefix}${c}/${m} mo</span>`;
+  }
+  return `<span class="chip exp-pm-tag pm-cash">💵 Cash</span>`;
+}
+
+function updateKnownCardNames() {
+  const dl = $("#knownCardNames");
+  if (!dl) return;
+  const set = new Set();
+  (state.expenses || []).forEach((e) => { if (e.cardName) set.add(e.cardName.trim()); });
+  (state.recurring || []).forEach((r) => { if (r.cardName) set.add(r.cardName.trim()); });
+  dl.innerHTML = [...set].sort().map((name) => `<option value="${esc(name)}">`).join("");
+}
 let unsubscribe = null;
 
 function detectCurrency() {
@@ -515,6 +562,62 @@ function homeHtml() {
       </div>`
     : "";
 
+  const dueAlerts = getDueRecurringAlerts(state.recurring, state.expenses, new Date());
+  const dueTotalCount = (dueAlerts.dDay?.length || 0) + (dueAlerts.upcoming?.length || 0) + (dueAlerts.overdue?.length || 0);
+
+  let dueAlertCard = "";
+  if (dueTotalCount > 0) {
+    const notifBtn = ("Notification" in window && Notification.permission === "default")
+      ? `<button type="button" class="btn btn-ghost sm" data-act="req-notifications" style="font-size:0.78rem;">🔔 Remind me</button>`
+      : "";
+    const items = [
+      ...dueAlerts.dDay.map((b) => `
+        <div class="due-alert-item due-alert-today">
+          <div class="due-alert-info">
+            <span class="due-alert-badge badge-today">🔴 Due Today</span>
+            <b>${esc(b.name)}</b>
+            <span class="due-alert-amt">${fmt(b.amount)}</span>
+          </div>
+          <button type="button" class="btn btn-primary sm" data-act="log-due-bill" data-id="${esc(b.id)}">Log as Paid</button>
+        </div>`),
+      ...dueAlerts.upcoming.map((b) => `
+        <div class="due-alert-item due-alert-upcoming">
+          <div class="due-alert-info">
+            <span class="due-alert-badge badge-upcoming">🟡 Due in ${b.diff}d</span>
+            <b>${esc(b.name)}</b>
+            <span class="due-alert-amt">${fmt(b.amount)}</span>
+          </div>
+          <button type="button" class="btn btn-soft sm" data-act="log-due-bill" data-id="${esc(b.id)}">Pay early</button>
+        </div>`),
+      ...dueAlerts.overdue.map((b) => `
+        <div class="due-alert-item due-alert-overdue">
+          <div class="due-alert-info">
+            <span class="due-alert-badge badge-overdue">⚠️ Past Due (${b.daysOverdue}d)</span>
+            <b>${esc(b.name)}</b>
+            <span class="due-alert-amt">${fmt(b.amount)}</span>
+          </div>
+          <button type="button" class="btn btn-soft sm" data-act="log-due-bill" data-id="${esc(b.id)}">Log as Paid</button>
+        </div>`),
+    ].join("");
+
+    dueAlertCard = `
+      <section class="card due-alert-card">
+        <div class="due-alert-head">
+          <div class="due-alert-title">
+            <span>📅</span>
+            <h3>Bill Due Reminders</h3>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            ${notifBtn}
+            <span class="chip">${dueTotalCount} pending</span>
+          </div>
+        </div>
+        <div class="due-alert-list">
+          ${items}
+        </div>
+      </section>`;
+  }
+
   const progress = calculateSavingsProgress(s.savingsGoal, monthBudget, spent);
 
   let savingsFeedback = "";
@@ -618,6 +721,7 @@ function homeHtml() {
         <p class="bubble ${mad ? "mad" : ""}">${esc(msg)}</p>
       </div>
     </section>
+    ${dueAlertCard}
     ${savingsGoalCard}
     <div class="section-title"><h2>Where the money goes</h2><small>Monthly budgets come from your yearly plan</small></div>
     <section class="grid">${cards.join("") || `<div class="card empty">🎯<p>No categories yet. Add some in Budget.</p></div>`}</section>
@@ -651,6 +755,37 @@ function expensesHtml() {
             ${PERSON_KEYS.map((k, i) => `<label class="who-pill"><input type="radio" name="paidBy" value="${k}" ${k === state.lastPaidBy ? "checked" : ""}><span>${esc(s.persons[i].emoji)} ${esc(s.persons[i].name)}</span></label>`).join("")}
             <label class="who-pill"><input type="radio" name="paidBy" value="both" ${state.lastPaidBy === "both" ? "checked" : ""}><span>💞 Together</span></label>
           </fieldset>
+          <fieldset class="who payment-method-group">
+            <legend>Payment method</legend>
+            ${PAYMENT_METHODS.map((pm) => `
+              <label class="who-pill payment-pill">
+                <input type="radio" name="paymentMethod" value="${pm.id}" ${pm.id === (state.lastPaymentMethod || "cash") ? "checked" : ""}>
+                <span>${pm.emoji} ${esc(pm.name)}</span>
+              </label>
+            `).join("")}
+          </fieldset>
+          <div id="creditCardDetails" class="payment-extra ${(state.lastPaymentMethod === "credit_card" || state.lastPaymentMethod === "installment") ? "" : "hide"}">
+            <label>Card name / Bank <small>(optional)</small>
+              <input type="text" name="cardName" list="knownCardNames" placeholder="e.g. BCA Card, Mandiri, Chase" maxlength="30" value="${esc(state.lastCardName || "")}">
+              <datalist id="knownCardNames"></datalist>
+            </label>
+          </div>
+          <div id="installmentDetails" class="payment-extra ${state.lastPaymentMethod === "installment" ? "" : "hide"}">
+            <div class="two-col-inline">
+              <label>Total months (tenure)
+                <select name="installmentMonths">
+                  <option value="3">3 months</option>
+                  <option value="6">6 months</option>
+                  <option value="12" selected>12 months</option>
+                  <option value="24">24 months</option>
+                  <option value="36">36 months</option>
+                </select>
+              </label>
+              <label>Current month
+                <input type="number" name="installmentCurrent" min="1" max="36" value="1">
+              </label>
+            </div>
+          </div>
           <label>Note <small>(optional)</small><input type="text" name="note" maxlength="80" placeholder="e.g. weekly groceries"></label>
           <div class="form-actions">
             <button class="btn btn-primary" type="submit" id="expSubmit">Add expense</button>
@@ -678,10 +813,18 @@ function initExpenseForm() {
   const f = $("#expForm");
   if (!f) return;
   fillExpenseSelects();
+  updateKnownCardNames();
   const ym = `${state.year}-${pad(state.month + 1)}`;
   const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
   f.date.value = today.startsWith(ym) ? today : `${ym}-01`;
   state.editingId = null;
+  const pm = state.lastPaymentMethod || "cash";
+  $$("input[name=paymentMethod]", f).forEach((r) => (r.checked = r.value === pm));
+  if (f.cardName) f.cardName.value = state.lastCardName || "";
+  const cc = $("#creditCardDetails", f);
+  const inst = $("#installmentDetails", f);
+  if (cc) cc.classList.toggle("hide", pm === "cash");
+  if (inst) inst.classList.toggle("hide", pm !== "installment");
 }
 
 function updateExpenseList() {
@@ -702,6 +845,7 @@ function updateExpenseList() {
         <div class="exp-row" style="--c:${esc(cat?.color || "#ddd")}">
           <div class="exp-emoji">${esc(cat?.emoji || "✨")}</div>
           <div class="exp-main"><b>${esc(e.note || cat?.name || "Other")}</b><small>${Number(e.date.slice(8, 10))} ${MONTHS[state.month]} · ${esc(cat?.name || "Other")}</small></div>
+          ${paymentBadgeHtml(e)}
           ${e.paidBy === "both"
             ? `<span class="chip who-both">💞 Together</span>`
             : `<span class="chip who-${PERSON_KEYS[pi]}">${esc(s.persons[pi].emoji)} ${esc(s.persons[pi].name)}</span>`}
@@ -724,9 +868,26 @@ async function submitExpense(form) {
     toast("Enter a date, an amount and a category.");
     return;
   }
-  const data = { date, amount, categoryId, paidBy: ["p1", "p2", "both"].includes(fd.get("paidBy")) ? fd.get("paidBy") : "p1", note: String(fd.get("note") || "").trim() };
+  const pm = fd.get("paymentMethod") || "cash";
+  const cardName = String(fd.get("cardName") || "").trim();
+  const instMonths = Number(fd.get("installmentMonths")) || null;
+  const instCurr = Number(fd.get("installmentCurrent")) || null;
+
+  const data = {
+    date,
+    amount,
+    categoryId,
+    paidBy: ["p1", "p2", "both"].includes(fd.get("paidBy")) ? fd.get("paidBy") : "p1",
+    note: String(fd.get("note") || "").trim(),
+    paymentMethod: ["cash", "credit_card", "installment"].includes(pm) ? pm : "cash",
+    cardName,
+    installmentMonths: pm === "installment" ? instMonths : null,
+    installmentCurrent: pm === "installment" ? instCurr : null,
+  };
   state.lastCat = categoryId;
   state.lastPaidBy = data.paidBy;
+  state.lastPaymentMethod = data.paymentMethod;
+  if (cardName) state.lastCardName = cardName;
   try {
     if (state.editingId) await state.db.updateExpense(state.editingId, data);
     else await state.db.addExpense(data);
@@ -764,6 +925,18 @@ function startEdit(id) {
   f.note.value = e.note || "";
   const who = ["p1", "p2", "both"].includes(e.paidBy) ? e.paidBy : "p1";
   $$("input[name=paidBy]", f).forEach((r) => (r.checked = r.value === who));
+
+  const pm = ["cash", "credit_card", "installment"].includes(e.paymentMethod) ? e.paymentMethod : "cash";
+  $$("input[name=paymentMethod]", f).forEach((r) => (r.checked = r.value === pm));
+  if (f.cardName) f.cardName.value = e.cardName || "";
+  if (f.installmentMonths) f.installmentMonths.value = String(e.installmentMonths || 12);
+  if (f.installmentCurrent) f.installmentCurrent.value = String(e.installmentCurrent || 1);
+
+  const cc = $("#creditCardDetails", f);
+  const inst = $("#installmentDetails", f);
+  if (cc) cc.classList.toggle("hide", pm === "cash");
+  if (inst) inst.classList.toggle("hide", pm !== "installment");
+
   $("#expSubmit").textContent = "Save changes";
   $("#expCancel").classList.remove("hide");
   $("#expFormTitle").textContent = "Edit expense";
@@ -776,6 +949,13 @@ function cancelEdit() {
   const f = $("#expForm");
   f.amount.value = "";
   f.note.value = "";
+  const pm = state.lastPaymentMethod || "cash";
+  $$("input[name=paymentMethod]", f).forEach((r) => (r.checked = r.value === pm));
+  if (f.cardName) f.cardName.value = state.lastCardName || "";
+  const cc = $("#creditCardDetails", f);
+  const inst = $("#installmentDetails", f);
+  if (cc) cc.classList.toggle("hide", pm === "cash");
+  if (inst) inst.classList.toggle("hide", pm !== "installment");
   $("#expSubmit").textContent = "Add expense";
   $("#expCancel").classList.add("hide");
   $("#expFormTitle").textContent = "Add an expense";
@@ -1956,6 +2136,8 @@ function openRecurringDialog(editId = null) {
                   <span>${whoLabel}</span>
                   <span>·</span>
                   <span>${dayLabel}</span>
+                  <span>·</span>
+                  ${paymentBadgeHtml(b)}
                 </div>
               </div>
               <div class="rec-item-actions">
@@ -2006,6 +2188,27 @@ function openRecurringDialog(editId = null) {
           <label>Day of month (1–31)
             <input name="dayOfMonth" type="number" min="1" max="31" required value="${editingBill ? editingBill.dayOfMonth : 1}">
           </label>
+          <label>Payment method
+            <select name="paymentMethod">
+              ${PAYMENT_METHODS.map((pm) => `<option value="${pm.id}" ${editingBill?.paymentMethod === pm.id ? "selected" : ""}>${pm.emoji} ${esc(pm.name)}</option>`).join("")}
+            </select>
+          </label>
+          <div class="credit-card-details payment-extra ${(editingBill?.paymentMethod === "credit_card" || editingBill?.paymentMethod === "installment") ? "" : "hide"}">
+            <label>Card name / Bank <small>(optional)</small>
+              <input type="text" name="cardName" placeholder="e.g. BCA Card, Mandiri, Chase" maxlength="30" value="${esc(editingBill?.cardName || "")}">
+            </label>
+          </div>
+          <div class="installment-details payment-extra ${editingBill?.paymentMethod === "installment" ? "" : "hide"}">
+            <label>Total months (tenure)
+              <select name="installmentMonths">
+                <option value="3" ${editingBill?.installmentMonths === 3 ? "selected" : ""}>3 months</option>
+                <option value="6" ${editingBill?.installmentMonths === 6 ? "selected" : ""}>6 months</option>
+                <option value="12" ${!editingBill || editingBill.installmentMonths === 12 ? "selected" : ""}>12 months</option>
+                <option value="24" ${editingBill?.installmentMonths === 24 ? "selected" : ""}>24 months</option>
+                <option value="36" ${editingBill?.installmentMonths === 36 ? "selected" : ""}>36 months</option>
+              </select>
+            </label>
+          </div>
         </div>
         <div class="rec-form-actions">
           <button type="submit" class="btn btn-primary">${editingBill ? "Save changes" : "Add bill"}</button>
@@ -2052,6 +2255,10 @@ async function submitRecurringForm(form) {
     return;
   }
 
+  const paymentMethod = fd.get("paymentMethod") || "cash";
+  const cardName = String(fd.get("cardName") || "").trim();
+  const installmentMonths = paymentMethod === "installment" ? (Number(fd.get("installmentMonths")) || 12) : null;
+
   const payload = {
     name,
     amount,
@@ -2059,6 +2266,9 @@ async function submitRecurringForm(form) {
     paidBy,
     dayOfMonth,
     active: true,
+    paymentMethod,
+    cardName,
+    installmentMonths,
   };
 
   try {
@@ -2119,6 +2329,10 @@ async function logAllPendingRecurring() {
         paidBy: b.paidBy || "p1",
         note: b.name || "Recurring bill",
         recurringId: b.id,
+        paymentMethod: b.paymentMethod || "cash",
+        cardName: b.cardName || "",
+        installmentMonths: b.installmentMonths || null,
+        installmentCurrent: b.paymentMethod === "installment" ? 1 : null,
       });
     }
     toast(`Logged ${pending.length} recurring bill${pending.length > 1 ? "s" : ""} for this month`);
@@ -2556,6 +2770,47 @@ document.addEventListener("click", async (ev) => {
       }
       break;
     }
+    case "log-due-bill": {
+      const bill = state.recurring.find((r) => String(r.id) === String(el.dataset.id));
+      if (!bill) {
+        toast("Bill not found");
+        break;
+      }
+      const today = new Date();
+      const dateStr = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+      const expData = {
+        date: dateStr,
+        amount: Number(bill.amount) || 0,
+        categoryId: bill.categoryId || "",
+        paidBy: bill.paidBy || "p1",
+        note: bill.name || "Recurring bill",
+        recurringId: bill.id,
+        paymentMethod: bill.paymentMethod || "cash",
+        cardName: bill.cardName || "",
+        installmentMonths: bill.installmentMonths || null,
+        installmentCurrent: bill.paymentMethod === "installment" ? 1 : null,
+      };
+      try {
+        await state.db.addExpense(expData);
+        toast(`Logged ${bill.name} as paid!`);
+        render();
+      } catch (err) {
+        toast("Couldn't log bill: " + (err.message || err));
+      }
+      break;
+    }
+    case "req-notifications": {
+      if ("Notification" in window) {
+        Notification.requestPermission().then((perm) => {
+          if (perm === "granted") {
+            toast("Due date reminders enabled! 🔔");
+            checkDDayNotifications();
+          }
+          renderView();
+        });
+      }
+      break;
+    }
     case "log-recurring-all": {
       if (!isPro(settings(), state.user)) {
         openProDialog();
@@ -2632,6 +2887,15 @@ document.addEventListener("change", (ev) => {
   if (ev.target.id === "restoreJsonFile" && ev.target.files?.[0]) {
     importJson(ev.target.files[0]);
     ev.target.value = "";
+  }
+  if (ev.target.name === "paymentMethod") {
+    const form = ev.target.closest("form");
+    if (!form) return;
+    const val = ev.target.value;
+    const cc = form.querySelector("#creditCardDetails") || form.querySelector(".credit-card-details");
+    const inst = form.querySelector("#installmentDetails") || form.querySelector(".installment-details");
+    if (cc) cc.classList.toggle("hide", val === "cash");
+    if (inst) inst.classList.toggle("hide", val !== "installment");
   }
 });
 
@@ -2773,6 +3037,7 @@ function refreshChrome() {
 
 function onData() {
   if (!state.user || !ready()) return;
+  checkDDayNotifications();
   if (!$("#view")) {
     render();
     return;
