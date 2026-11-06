@@ -83,16 +83,52 @@ const state = {
 };
 
 let notifiedDDayToday = false;
+let checkedPwaPrompt = false;
 
-function checkDDayNotifications() {
+function isStandalonePwa() {
+  return Boolean(
+    (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) ||
+    navigator.standalone
+  );
+}
+
+async function sendBrowserNotification(title, options = {}) {
+  const opts = {
+    icon: "icons/icon-192.svg",
+    badge: "icons/icon-192.svg",
+    ...options,
+  };
+  if ("serviceWorker" in navigator) {
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (reg && typeof reg.showNotification === "function") {
+        await reg.showNotification(title, opts);
+        return true;
+      }
+    } catch (e) {
+      console.warn("ServiceWorker showNotification failed, trying fallback:", e);
+    }
+  }
+  if ("Notification" in window) {
+    try {
+      new Notification(title, opts);
+      return true;
+    } catch (e) {
+      console.warn("Notification constructor failed:", e);
+    }
+  }
+  return false;
+}
+
+async function checkDDayNotifications() {
   if (notifiedDDayToday || !state.loaded.recurring || !state.loaded.expenses) return;
   const alerts = getDueRecurringAlerts(state.recurring, state.expenses, new Date());
   if (alerts.dDay && alerts.dDay.length > 0) {
     if ("Notification" in window && Notification.permission === "granted") {
       try {
-        new Notification("PiggyNest: Bill Due Today! 📅", {
+        await sendBrowserNotification("PiggyNest: Bill Due Today! 📅", {
           body: `Due today: ${alerts.dDay.map((b) => b.name).join(", ")}`,
-          icon: "icons/icon-192.svg",
+          tag: "piggynest-due-today",
         });
         notifiedDDayToday = true;
       } catch (e) {
@@ -100,6 +136,37 @@ function checkDDayNotifications() {
       }
     }
   }
+}
+
+function openNotifPromptDialog() {
+  const dlg = $("#settingsDialog");
+  if (!dlg) return;
+  dlg.innerHTML = `
+    <div class="dlg-body notif-setup-dlg">
+      <div style="font-size:2.4rem;margin-bottom:8px;">🔔</div>
+      <h2 style="margin:0 0 8px;">🔔 Stay on top of your bills!</h2>
+      <p style="color:var(--ink-soft);font-size:0.92rem;line-height:1.45;margin:0 0 20px;">PiggyNest can notify you on D-Day when recurring bills and subscriptions are due so you never miss a payment.</p>
+      <div class="notif-setup-actions">
+        <button type="button" class="btn btn-primary" id="btnEnableNotif" data-act="enable-notif-prompt">Enable reminders</button>
+        <button type="button" class="btn btn-ghost sm" id="btnDismissNotif" data-act="dismiss-notif-prompt">Maybe later</button>
+      </div>
+    </div>`;
+  if (!dlg.open) dlg.showModal();
+}
+
+function checkPwaNotificationPrompt() {
+  if (checkedPwaPrompt) return;
+  if (!("Notification" in window)) return;
+  if (Notification.permission !== "default") return;
+  if (!isStandalonePwa()) return;
+  if (localStorage.getItem("piggynest_notif_prompted")) return;
+
+  checkedPwaPrompt = true;
+  setTimeout(() => {
+    const dlg = $("#settingsDialog");
+    if (!dlg || dlg.open) return;
+    openNotifPromptDialog();
+  }, 600);
 }
 
 function paymentBadgeHtml(e) {
@@ -1829,6 +1896,9 @@ async function deleteInvestment(id) {
 function openSettings() {
   const s = settings();
   const dlg = $("#settingsDialog");
+  const hasNotif = "Notification" in window;
+  const notifPerm = hasNotif ? Notification.permission : "unsupported";
+  const notifEnabled = notifPerm === "granted";
   dlg.innerHTML = `
     <div class="dlg-body">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
@@ -1855,6 +1925,22 @@ function openSettings() {
           <label>Emoji<input id="setEmoji${i}" value="${esc(s.persons[i].emoji)}" maxlength="4" style="text-align:center"></label>
           <label>Person ${i + 1}<input id="setName${i}" value="${esc(s.persons[i].name)}" maxlength="20"></label>
         </div>`).join("")}
+      <div class="dlg-notif-row">
+        <div>
+          <div class="dlg-notif-label">
+            <span>🔔</span>
+            <b>Bill Due Reminders</b>
+            <span class="chip ${notifEnabled ? "chip-notif-on" : "chip-notif-off"}">${notifEnabled ? "Enabled" : "Disabled"}</span>
+          </div>
+          <small class="dlg-notif-sub">Get notified on D-Day so you never miss a payment</small>
+        </div>
+        <div>
+          ${notifEnabled
+            ? `<button type="button" class="btn btn-soft sm" data-act="test-notification">Send test notification</button>`
+            : `<button type="button" class="btn btn-primary sm" data-act="req-notifications-settings">Enable notifications</button>`
+          }
+        </div>
+      </div>
       <div class="dlg-backup">
         <small style="font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.5px;">Backup & Export</small>
         <div class="dlg-backup-btns">
@@ -2711,6 +2797,29 @@ document.addEventListener("click", async (ev) => {
     updateBackground(mascotBtn.dataset.mascotId);
     return;
   }
+  const notifPromptBtn = ev.target.closest("#btnEnableNotif, #btnDismissNotif, [data-act='enable-notif-prompt'], [data-act='dismiss-notif-prompt']");
+  if (notifPromptBtn) {
+    localStorage.setItem("piggynest_notif_prompted", "true");
+    const dlg = $("#settingsDialog");
+    if (dlg?.open) dlg.close();
+    if (notifPromptBtn.id === "btnEnableNotif" || notifPromptBtn.dataset.act === "enable-notif-prompt") {
+      if ("Notification" in window) {
+        try {
+          const res = Notification.requestPermission();
+          const perm = res && typeof res.then === "function" ? await res : await new Promise((r) => Notification.requestPermission(r));
+          if (perm === "granted") {
+            toast("🔔 Reminders enabled!");
+            await checkDDayNotifications();
+          }
+        } catch (e) {
+          console.warn("Notification error:", e);
+        }
+        renderView();
+      }
+    }
+    return;
+  }
+
   const el = ev.target.closest("[data-act]");
   if (!el) return;
   const act = el.dataset.act;
@@ -2801,13 +2910,56 @@ document.addEventListener("click", async (ev) => {
     }
     case "req-notifications": {
       if ("Notification" in window) {
-        Notification.requestPermission().then((perm) => {
+        try {
+          const res = Notification.requestPermission();
+          const perm = res && typeof res.then === "function" ? await res : await new Promise((r) => Notification.requestPermission(r));
           if (perm === "granted") {
             toast("Due date reminders enabled! 🔔");
-            checkDDayNotifications();
+            localStorage.setItem("piggynest_notif_prompted", "true");
+            await checkDDayNotifications();
           }
-          renderView();
-        });
+        } catch (e) {
+          console.warn("Notification error:", e);
+        }
+        renderView();
+      }
+      break;
+    }
+    case "req-notifications-settings": {
+      if ("Notification" in window) {
+        try {
+          const res = Notification.requestPermission();
+          const perm = res && typeof res.then === "function" ? await res : await new Promise((r) => Notification.requestPermission(r));
+          if (perm === "granted") {
+            toast("🔔 Reminders enabled!");
+            localStorage.setItem("piggynest_notif_prompted", "true");
+            await checkDDayNotifications();
+          } else if (perm === "denied") {
+            toast("Notifications are blocked in your browser settings");
+          }
+        } catch (e) {
+          console.warn("Notification error:", e);
+        }
+        openSettings();
+      } else {
+        toast("Notifications are not supported on this browser");
+      }
+      break;
+    }
+    case "test-notification": {
+      if ("Notification" in window && Notification.permission === "granted") {
+        try {
+          await sendBrowserNotification("PiggyNest: Test Notification 🔔", {
+            body: "Notifications are working great! You'll receive alerts on bill D-Days.",
+            tag: "piggynest-test",
+          });
+          toast("🔔 Test notification sent!");
+        } catch (err) {
+          console.error("Test notification error:", err);
+          toast("Couldn't send notification: " + (err.message || err));
+        }
+      } else {
+        toast("Notifications are not enabled");
       }
       break;
     }
@@ -3038,6 +3190,7 @@ function refreshChrome() {
 function onData() {
   if (!state.user || !ready()) return;
   checkDDayNotifications();
+  checkPwaNotificationPrompt();
   if (!$("#view")) {
     render();
     return;

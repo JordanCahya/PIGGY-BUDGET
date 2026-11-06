@@ -1798,3 +1798,68 @@ body { background: var(--bg); background-attachment: scroll; }
   color: #feb2b2;
   border-color: #742a2a;
 }
+/* ---------- Notifications Settings & PWA Prompt ---------- */
+.dlg-notif-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--bg-soft, rgba(0, 0, 0, 0.02));
+  border: 1px solid var(--line);
+  margin: 12px 0;
+  flex-wrap: wrap;
+}
+.dlg-notif-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.95rem;
+}
+.dlg-notif-sub {
+  color: var(--ink-soft);
+  display: block;
+  font-size: 0.8rem;
+  margin-top: 2px;
+}
+.chip-notif-on {
+  background: #def7ec;
+  color: #03543f;
+  border: 1px solid #bcf0da;
+  font-weight: 700;
+  font-size: 0.72rem;
+}
+.chip-notif-off {
+  background: var(--bg-soft);
+  color: var(--ink-soft);
+  border: 1px solid var(--line);
+  font-weight: 700;
+  font-size: 0.72rem;
+}
+.notif-setup-dlg {
+  text-align: center;
+  padding: 24px 20px;
+  max-width: 380px;
+}
+.notif-setup-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+[data-theme="mocha"] .chip-notif-on {
+  background: #1c4532;
+  color: #6ee7b7;
+  border-color: #276749;
+}
+[data-theme="mocha"] .chip-notif-off {
+  background: #382c26;
+  color: #a89f91;
+  border-color: #4a3a33;
+}
+[data-theme="mocha"] .dlg-notif-row {
+  background: #382c26;
+  border-color: #4a3a33;
+}
