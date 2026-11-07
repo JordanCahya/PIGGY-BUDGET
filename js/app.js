@@ -38,6 +38,38 @@ const $ = (sel, el = document) => el.querySelector(sel);
 const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
 const esc = (s) =>
   String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+function formatNumberInput(val) {
+  if (val === "" || val == null) return "";
+  const clean = String(val).replace(/[^0-9.]/g, "");
+  const parts = clean.split(".");
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return parts.slice(0, 2).join(".");
+}
+
+function parseFormattedNumber(val) {
+  return Number(String(val || "").replace(/,/g, "")) || 0;
+}
+
+function handleFormattedNumberInput(input) {
+  const origVal = input.value;
+  const cursor = input.selectionStart || 0;
+  const digitsBefore = (origVal.slice(0, cursor).match(/\d/g) || []).length;
+
+  const formatted = formatNumberInput(origVal);
+  if (origVal !== formatted) {
+    input.value = formatted;
+    let newCursor = 0;
+    let seenDigits = 0;
+    while (newCursor < formatted.length && seenDigits < digitsBefore) {
+      if (/\d/.test(formatted[newCursor])) {
+        seenDigits++;
+      }
+      newCursor++;
+    }
+    input.setSelectionRange(newCursor, newCursor);
+  }
+}
 const clone = (o) => JSON.parse(JSON.stringify(o));
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const pad = (n) => String(n).padStart(2, "0");
@@ -843,7 +875,7 @@ function expensesHtml() {
         </div>
         <form id="expForm" autocomplete="off">
           <label>Date<input type="date" name="date" required></label>
-          <label>Amount<input type="number" name="amount" min="0" step="any" inputmode="decimal" placeholder="0" required></label>
+          <label>Amount<input type="text" name="amount" inputmode="decimal" placeholder="0" required></label>
           <label>Category<select name="categoryId" required></select></label>
           <fieldset class="who">
             <legend>Paid by</legend>
@@ -956,7 +988,7 @@ function updateExpenseList() {
 
 async function submitExpense(form) {
   const fd = new FormData(form);
-  const amount = Number(fd.get("amount"));
+  const amount = parseFormattedNumber(fd.get("amount"));
   const date = String(fd.get("date") || "");
   const categoryId = String(fd.get("categoryId") || "");
   if (!(amount > 0) || !date || !categoryId) {
@@ -1015,7 +1047,7 @@ function startEdit(id) {
   if (!e || !f) return;
   state.editingId = id;
   f.date.value = e.date;
-  f.amount.value = e.amount;
+  f.amount.value = formatNumberInput(e.amount);
   f.categoryId.value = e.categoryId;
   f.note.value = e.note || "";
   const who = ["p1", "p2", "both"].includes(e.paidBy) ? e.paidBy : "p1";
@@ -1097,7 +1129,7 @@ function budgetHtml() {
         ${PERSON_KEYS.map((k, i) => `
           <div class="income-box ${k}">
             <label>${esc(s.persons[i].emoji)} ${esc(s.persons[i].name)}'s yearly income
-              <input type="number" min="0" step="any" inputmode="decimal" data-income="${k}" value="${d.b.income[k] || ""}" placeholder="0">
+              <input type="text" inputmode="decimal" data-income="${k}" value="${formatNumberInput(d.b.income[k])}" placeholder="0">
             </label>
             <small id="inc-m-${k}"></small>
           </div>`).join("")}
@@ -1331,16 +1363,25 @@ function yearHtml() {
   const monthsWithSpend = idx.months.filter((x) => x.total > 0).length;
   const max = Math.max(monthly, ...idx.months.map((x) => x.total), 1) * 1.15;
 
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const isFinalReview = (currentYear > state.year) || (currentYear === state.year && now.getMonth() === 11 && now.getDate() >= 31);
+  const bannerTitle = isFinalReview ? `${state.year} Piggy Wrapped` : `${state.year} Year-to-Date Wrapped`;
+  const bannerBtnText = isFinalReview ? `Open ${state.year} Wrapped ✨` : `View ${state.year} Year-to-Date Wrapped ✨`;
+  const bannerDesc = isFinalReview
+    ? "Your couple financial journey, celebratory milestones, and superpower archetype."
+    : "Your couple financial journey so far, progress milestones, and superpower archetype.";
+
   const wrappedBanner = `
     <section class="card wrapped-banner">
       <div class="wrapped-banner-content">
         <span class="wrapped-banner-icon">🎁</span>
         <div>
-          <h2>${state.year} Piggy Wrapped</h2>
-          <p>Your couple financial journey, celebratory milestones, and superpower archetype.</p>
+          <h2>${bannerTitle}</h2>
+          <p>${bannerDesc}</p>
         </div>
       </div>
-      <button class="btn btn-primary" data-act="open-wrapped">Open ${state.year} Wrapped ✨</button>
+      <button class="btn btn-primary" data-act="open-wrapped">${bannerBtnText}</button>
     </section>`;
 
   const bars = idx.months.map((mth, i) => `
@@ -1750,8 +1791,8 @@ function openInvForm(id) {
         </select>
       </label>
       ${inv ? "" : `
-        <label>Money put in so far <small>(optional)</small><input type="number" name="put" min="0" step="any" inputmode="decimal" placeholder="0"></label>
-        <label>Worth right now <small>(optional)</small><input type="number" name="worth" min="0" step="any" inputmode="decimal" placeholder="0"></label>
+        <label>Money put in so far <small>(optional)</small><input type="text" name="put" inputmode="decimal" placeholder="0"></label>
+        <label>Worth right now <small>(optional)</small><input type="text" name="worth" inputmode="decimal" placeholder="0"></label>
         <label>As of<input type="date" name="date" value="${todayYmd()}"></label>`}
       <label>Note <small>(optional)</small><input name="note" maxlength="80" value="${esc(inv?.note || "")}" placeholder="e.g. bought at the bank"></label>
       <div class="dlg-actions">
@@ -1782,9 +1823,9 @@ async function submitInvForm(form) {
       return;
     }
     const date = String(fd.get("date") || todayYmd());
-    const put = Number(fd.get("put")) || 0;
+    const put = parseFormattedNumber(fd.get("put"));
     const worthRaw = fd.get("worth");
-    const worth = worthRaw === "" || worthRaw == null ? null : Number(worthRaw);
+    const worth = worthRaw === "" || worthRaw == null ? null : parseFormattedNumber(worthRaw);
     const entries = [];
     if (put > 0) entries.push({ id: uid(), date, kind: "add", amount: put });
     if (worth != null && worth >= 0 && !(put > 0 && worth === put)) entries.push({ id: uid(), date, kind: "value", amount: worth });
@@ -1821,7 +1862,7 @@ function renderInvDialog(id, kind = "add") {
         </label>
         <div class="row2">
           <label>Date<input type="date" name="date" value="${todayYmd()}" required></label>
-          <label><span id="amtLabel">Amount added</span><input type="number" name="amount" min="0" step="any" inputmode="decimal" placeholder="0" required></label>
+          <label><span id="amtLabel">Amount added</span><input type="text" name="amount" inputmode="decimal" placeholder="0" required></label>
         </div>
         ${link ? `<label class="check" id="alsoRow"><input type="checkbox" name="alsoExpense" checked><span>Also count it as spending in ${esc(link.emoji)} ${esc(link.name)}</span></label>` : ""}
         <button class="btn btn-primary" type="submit">Save entry</button>
@@ -1883,7 +1924,7 @@ async function saveEntry(form) {
   if (!inv) return;
   const fd = new FormData(form);
   const kind = ["add", "withdraw", "value"].includes(fd.get("kind")) ? fd.get("kind") : "add";
-  const amount = Number(fd.get("amount"));
+  const amount = parseFormattedNumber(fd.get("amount"));
   const date = String(fd.get("date") || todayYmd());
   if (!(amount >= 0) || (kind !== "value" && amount === 0)) { toast("Enter an amount."); return; }
   const entry = { id: uid(), date, kind, amount };
@@ -2456,42 +2497,69 @@ function downloadWrappedCard(w) {
   ctx.textAlign = "right";
   ctx.fillText(w.mascot.emoji, 1000, 1750);
 
-  // 11. Trigger PNG download with Web Share API and Blob URL fallback
+  // 11. Trigger PNG download with Web Share API and fail-safe preview modal
   const safeFamily = (s.familyName || "PiggyNest").replace(/[^a-zA-Z0-9_-]/g, "_");
-  canvas.toBlob(async (blob) => {
-    if (!blob) {
-      toast("Could not generate image");
-      return;
-    }
-    const fileName = `${safeFamily}-${w.year}-Wrapped.png`;
-    const file = new File([blob], fileName, { type: "image/png" });
+  const fileName = `${safeFamily}-${w.year}-Wrapped.png`;
+  const dataUrl = canvas.toDataURL("image/png");
 
-    // Try native Web Share API first (Mobile iOS & Android PWAs)
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      try {
-        await navigator.share({
-          title: `${s.familyName}'s ${w.year} Piggy Wrapped`,
-          text: `Check out our ${w.year} PiggyNest Wrapped! 🎁`,
-          files: [file],
-        });
-        toast("📸 Story card shared!");
-        return;
-      } catch (err) {
-        if (err.name === "AbortError") return;
+  canvas.toBlob(async (blob) => {
+    if (blob) {
+      const file = new File([blob], fileName, { type: "image/png" });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({
+            title: `${s.familyName}'s ${w.year} Piggy Wrapped`,
+            text: `Check out our ${w.year} PiggyNest Wrapped! 🎁`,
+            files: [file],
+          });
+          toast("📸 Story card shared!");
+        } catch (err) {
+          if (err.name !== "AbortError") {
+            console.warn("navigator.share error:", err);
+          }
+        }
       }
     }
 
-    // Desktop or Fallback: Blob URL download
-    const blobUrl = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = blobUrl;
-    a.download = fileName;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(blobUrl), 2000);
-    toast("📸 Story card downloaded!");
+    // Show fail-safe preview modal for touch & hold on mobile devices
+    showStoryCardModal(dataUrl, fileName);
+
+    // Also trigger direct download for desktop & Android browsers
+    try {
+      const a = document.createElement("a");
+      a.href = dataUrl;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      toast("📸 Story card downloaded!");
+    } catch (e) {
+      console.warn("Direct download link trigger:", e);
+    }
   }, "image/png");
+}
+
+function showStoryCardModal(dataUrl, fileName) {
+  let modal = $("#storyPreviewModal");
+  if (!modal) {
+    modal = document.createElement("div");
+    modal.id = "storyPreviewModal";
+    modal.className = "story-preview-modal";
+    document.body.appendChild(modal);
+  }
+  modal.innerHTML = `
+    <div class="story-preview-inner">
+      <button type="button" class="story-preview-close" data-act="close-story-preview" aria-label="Close">✕</button>
+      <h3 style="margin:0 0 4px;color:#fff;font-size:1.15rem;">📸 Your ${state.year} Story Card</h3>
+      <div class="story-preview-scroll">
+        <img src="${dataUrl}" class="story-preview-img" alt="Story Card">
+      </div>
+      <p class="story-save-hint">💡 On iPhone & Android: <b>Touch & hold the image</b> to "Save to Photos" or tap Download below.</p>
+      <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;width:100%;">
+        <a href="${dataUrl}" download="${fileName}" class="btn btn-primary" style="flex:1;min-width:140px;">Download Image</a>
+        <button type="button" class="btn btn-ghost" data-act="close-story-preview">Done</button>
+      </div>
+    </div>`;
 }
 
 /* ================================================================== */
@@ -2861,7 +2929,7 @@ function openRecurringDialog(editId = null) {
             <input name="name" type="text" maxlength="60" required placeholder="e.g. Netflix, Rent, Internet" value="${esc(editingBill?.name || "")}">
           </label>
           <label>Amount
-            <input name="amount" type="number" min="0" step="any" inputmode="decimal" required placeholder="0" value="${editingBill ? editingBill.amount : ""}">
+            <input name="amount" type="text" inputmode="decimal" required placeholder="0" value="${editingBill ? formatNumberInput(editingBill.amount) : ""}">
           </label>
           <label>Category
             <select name="categoryId" required>
@@ -2930,7 +2998,7 @@ async function submitRecurringForm(form) {
   const fd = new FormData(form);
   const id = form.dataset.id;
   const name = String(fd.get("name") || "").trim();
-  const amount = Number(fd.get("amount")) || 0;
+  const amount = parseFormattedNumber(fd.get("amount"));
   const categoryId = String(fd.get("categoryId") || "");
   const paidBy = ["p1", "p2", "both"].includes(fd.get("paidBy")) ? fd.get("paidBy") : "both";
   const dayRaw = parseInt(fd.get("dayOfMonth"), 10);
@@ -3436,6 +3504,7 @@ document.addEventListener("click", async (ev) => {
     case "tab": setTab(el.dataset.tab); break;
     case "open-wrapped": openWrappedStory(); break;
     case "close-wrapped": closeWrappedStory(); break;
+    case "close-story-preview": $("#storyPreviewModal")?.remove(); break;
     case "wrapped-prev": advanceWrappedSlide(-1); break;
     case "wrapped-next": advanceWrappedSlide(1); break;
     case "download-wrapped": downloadWrappedCard(currentWrappedData); break;
@@ -3708,10 +3777,21 @@ document.addEventListener("change", (ev) => {
 
 document.addEventListener("input", (ev) => {
   const t = ev.target;
+
+  // Format comma-separated numeric inputs across forms
+  const isFormattedNumInput = (
+    (t.name === "amount" && (t.form?.id === "expForm" || t.form?.id === "entryForm" || t.form?.id === "recForm")) ||
+    (t.name === "put" || t.name === "worth")
+  );
+  if (isFormattedNumInput) {
+    handleFormattedNumberInput(t);
+  }
+
   if (state.tab !== "budget" || !$("#view")?.contains(t)) return;
   const d = getDraft();
   if (t.dataset.income) {
-    d.b.income[t.dataset.income] = t.value === "" ? 0 : Number(t.value);
+    handleFormattedNumberInput(t);
+    d.b.income[t.dataset.income] = parseFormattedNumber(t.value);
     markDirty();
     return;
   }
@@ -3805,6 +3885,15 @@ function onData() {
   if (!state.user || !ready()) return;
   checkDDayNotifications();
   checkPwaNotificationPrompt();
+
+  // Automatic Year-End / New Year's Eve Wrapped Pop-up
+  const now = new Date();
+  const isYearEnd = (now.getMonth() === 11 && now.getDate() >= 31) || (now.getMonth() === 0 && now.getDate() <= 3);
+  const wrappedAutoKey = `piggynest_wrapped_auto_${now.getFullYear()}`;
+  if (isYearEnd && !localStorage.getItem(wrappedAutoKey) && ready()) {
+    localStorage.setItem(wrappedAutoKey, "true");
+    setTimeout(() => openWrappedStory(), 1000);
+  }
   if (!$("#view")) {
     render();
     return;

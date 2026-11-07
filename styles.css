@@ -2409,3 +2409,80 @@ body { background: var(--bg); background-attachment: scroll; }
 [data-theme="mocha"] .wrapped-banner-content p {
   color: #cbbba9;
 }
+/* ---------- Story Card Preview Modal ---------- */
+.story-preview-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: rgba(10, 8, 12, 0.92);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  animation: fadeIn 0.2s ease-out;
+}
+.story-preview-inner {
+  position: relative;
+  background: #231920;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 20px;
+  padding: 20px;
+  max-width: 380px;
+  width: 100%;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+}
+.story-preview-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  background: rgba(255, 255, 255, 0.15);
+  border: none;
+  color: #fff;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  font-size: 0.9rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.story-preview-close:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+.story-preview-scroll {
+  width: 100%;
+  overflow-y: auto;
+  max-height: 52vh;
+  border-radius: 12px;
+  margin: 8px 0;
+  background: rgba(0, 0, 0, 0.2);
+}
+.story-preview-img {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+.story-save-hint {
+  font-size: 0.82rem;
+  color: #fde68a;
+  background: rgba(253, 230, 138, 0.12);
+  border: 1px solid rgba(253, 230, 138, 0.2);
+  border-radius: 10px;
+  padding: 8px 12px;
+  margin: 8px 0 12px;
+  line-height: 1.4;
+}
+[data-theme="mocha"] .story-preview-inner {
+  background: #2a201b;
+  border-color: #4a3a33;
+}
