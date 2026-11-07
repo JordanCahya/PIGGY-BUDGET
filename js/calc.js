@@ -440,30 +440,65 @@ export function generateWrappedData({
   expenses = [],
   settings = {},
   investments = [],
+  asOfDate = new Date(),
 } = {}) {
   const targetYear = Number(year) || (budget && Number(budget.year)) || new Date().getFullYear();
 
-  // 1. Yearly budget calculation
+  // 1. Determine YTD timeframe (elapsed months)
+  const refDate = asOfDate instanceof Date ? asOfDate : new Date(asOfDate);
+  const currentYear = refDate.getFullYear();
+  const currentMonthIndex = refDate.getMonth(); // 0 = Jan, 10 = Nov, 11 = Dec
+
+  let endMonthIndex = 11;
+  let isYtd = false;
+
+  if (targetYear < currentYear) {
+    endMonthIndex = 11;
+    isYtd = false;
+  } else if (targetYear === currentYear) {
+    endMonthIndex = Math.min(11, Math.max(0, currentMonthIndex));
+    isYtd = endMonthIndex < 11;
+  } else {
+    endMonthIndex = 0;
+    isYtd = true;
+  }
+
+  const elapsedMonths = endMonthIndex + 1;
+
+  const MONTH_NAMES = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+  ];
+  const MONTH_SHORT = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+  ];
+
+  const endMonthName = MONTH_NAMES[endMonthIndex];
+  const endMonthShortName = MONTH_SHORT[endMonthIndex];
+
+  // 2. Budget calculation (annual and YTD)
   const normBudget = normalizeBudget(budget);
   const calculatedBudget = (budget && Array.isArray(budget.cats) && typeof budget.total === "number")
     ? budget
     : calc(normBudget);
   const totalBudget = Math.max(0, Number(calculatedBudget.total) || 0);
   const monthBudget = totalBudget > 0 ? totalBudget / 12 : 0;
+  const ytdBudget = monthBudget * elapsedMonths;
 
-  // 2. Spending aggregation via spendIndex
+  // 3. Spending aggregation via spendIndex filtered up to endMonthIndex
   const safeExpenses = Array.isArray(expenses) ? expenses : [];
   const { byCat, months } = spendIndex(targetYear, safeExpenses);
 
-  // Filter valid expenses for that year
+  // Filter valid expenses for that year up to endMonthIndex
   const yearExpenses = safeExpenses.filter((e) => {
     if (!e || typeof e !== "object") return false;
     if (typeof e.date !== "string" || !e.date.startsWith(`${targetYear}-`)) return false;
     const mi = Number(e.date.slice(5, 7)) - 1;
-    return mi >= 0 && mi <= 11;
+    return mi >= 0 && mi <= endMonthIndex;
   });
 
-  // Total spent
+  // Total spent in YTD period
   let p1Paid = 0;
   let p2Paid = 0;
   let bothPaid = 0;
@@ -484,14 +519,19 @@ export function generateWrappedData({
   }
 
   const totalSpent = p1Paid + p2Paid + bothPaid;
-  const totalSaved = Math.max(0, totalBudget - totalSpent);
+  const totalSaved = Math.max(0, ytdBudget - totalSpent);
 
-  // 3. Happy Months: number of months where month total spent <= monthBudget
-  const happyMonthsCount = monthBudget > 0
-    ? months.filter((m) => m.total <= monthBudget).length
-    : 0;
+  // 4. Happy Months: number of elapsed months (0 <= mi <= endMonthIndex) where month total spent <= monthBudget
+  let happyMonthsCount = 0;
+  if (monthBudget > 0) {
+    for (let mi = 0; mi <= endMonthIndex; mi++) {
+      if (months[mi].total <= monthBudget) {
+        happyMonthsCount++;
+      }
+    }
+  }
 
-  // 4. Top Categories
+  // 5. Top Categories (ranked by spend in elapsed months)
   const catMetaMap = new Map();
   for (const c of calculatedBudget.cats || []) {
     if (c && c.id) {
@@ -506,7 +546,7 @@ export function generateWrappedData({
 
   const topCategories = [];
   for (const [catId, monthRows] of Object.entries(byCat)) {
-    const catSpent = monthRows.reduce((sum, m) => sum + m.total, 0);
+    const catSpent = monthRows.slice(0, endMonthIndex + 1).reduce((sum, m) => sum + m.total, 0);
     if (catSpent <= 0) continue;
     const meta = catMetaMap.get(String(catId)) || {
       id: catId,
@@ -525,7 +565,7 @@ export function generateWrappedData({
   }
   topCategories.sort((a, b) => b.totalSpent - a.totalSpent);
 
-  // 5. Partner Shares & Generosity Award
+  // 6. Partner Shares & Generosity Award
   const p1Person = (settings && Array.isArray(settings.persons) && settings.persons[0])
     ? settings.persons[0]
     : { id: "p1", name: "Partner 1", emoji: "🌸" };
@@ -584,21 +624,13 @@ export function generateWrappedData({
     generosityEmoji,
   };
 
-  // 6. Top Month (highest savings or lowest spend)
-  const MONTH_NAMES = [
-    "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December",
-  ];
-  const MONTH_SHORT = [
-    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-  ];
-
+  // 7. Top Month (highest savings or lowest spend among elapsed active months)
   let bestMi = 0;
   let lowestSpend = Infinity;
 
   if (activeMonthIndices.size > 0) {
     for (const mi of activeMonthIndices) {
+      if (mi > endMonthIndex) continue;
       const spent = months[mi].total;
       if (spent < lowestSpend) {
         lowestSpend = spent;
@@ -620,7 +652,7 @@ export function generateWrappedData({
     saved: Math.max(0, monthBudget - bestMonthSpent),
   };
 
-  // 7. Investment Stats for the year
+  // 8. Investment Stats for the year
   const safeInvestments = Array.isArray(investments) ? investments : [];
   let totalInvested = 0;
   let portfolioValue = 0;
@@ -680,7 +712,7 @@ export function generateWrappedData({
     portfolioValue,
   };
 
-  // 8. Couple Archetype
+  // 9. Couple Archetype
   const makeArchetype = (id, name, emoji, description) => ({
     id,
     name,
@@ -695,17 +727,17 @@ export function generateWrappedData({
   const topCatName = topCategories.length > 0 ? (topCategories[0].name || "").toLowerCase() : "";
   const topCatEmoji = topCategories.length > 0 ? topCategories[0].emoji : "";
 
-  if (totalBudget > 0 && (totalSaved / totalBudget) >= 0.2) {
+  if (ytdBudget > 0 && (totalSaved / ytdBudget) >= 0.2) {
     archetype = makeArchetype(
       "goal_crushers",
       "The Goal Crushers",
       "🏆",
-      "You crushed your savings goals this year! Over 20% of your total budget was saved."
+      "You crushed your savings goals this year! Over 20% of your budget was saved."
     );
   } else if (
     hasInvestments &&
     totalInvested > 0 &&
-    (totalGain > 0 || totalInvested >= (totalSpent * 0.1) || totalInvested >= (totalBudget * 0.1) || !topCategories.length)
+    (totalGain > 0 || totalInvested >= (totalSpent * 0.1) || totalInvested >= (ytdBudget * 0.1) || !topCategories.length)
   ) {
     archetype = makeArchetype(
       "wealth_builders",
@@ -776,15 +808,24 @@ export function generateWrappedData({
     );
   }
 
-  // 9. Active Mascot
+  // 10. Active Mascot
   const mascot = getMascot(settings?.mascot);
 
   return {
     year: targetYear,
-    totalSpent,
+    isYtd,
+    elapsedMonths,
+    endMonthIndex,
+    endMonthName,
+    endMonthShortName,
+    ytdBudget,
     totalBudget,
+    totalSpent,
+    ytdSpent: totalSpent,
     totalSaved,
+    ytdSaved: totalSaved,
     happyMonthsCount,
+    happyMonthsTotal: elapsedMonths,
     topCategories,
     partnerShares,
     generosityAward,

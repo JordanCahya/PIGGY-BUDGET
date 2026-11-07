@@ -2049,10 +2049,10 @@ function renderWrappedStory() {
     case "welcome":
       slideHtml = `
         <div class="story-slide slide-welcome">
-          <div class="story-badge">🎁 Piggy Wrapped ${w.year}</div>
+          <div class="story-badge">🎁 ${w.isYtd ? `${w.year} Year-to-Date Wrapped` : `Piggy Wrapped ${w.year}`}</div>
           <div class="story-mascot-hero">${w.mascot.emoji}</div>
           <h1 class="story-title">${esc(s.familyName)}'s ${w.year}</h1>
-          <p class="story-subtitle">Ready to see how you handled your money together in ${w.year}?</p>
+          <p class="story-subtitle">${w.isYtd ? `January – ${w.endMonthName} ${w.year} (Year-to-Date)` : `Ready to see how you handled your money together in ${w.year}?`}</p>
           <div class="story-hint">Tap anywhere on the right to continue →</div>
         </div>`;
       break;
@@ -2061,21 +2061,21 @@ function renderWrappedStory() {
         <div class="story-slide slide-savings">
           <div class="story-badge">🌱 The Big Picture</div>
           <div class="story-stat-hero">
-            <span class="story-stat-label">Together in ${w.year}, you saved</span>
+            <span class="story-stat-label">TOTAL SAVED (${w.isYtd ? `JAN – ${w.endMonthShortName.toUpperCase()}` : w.year})</span>
             <b class="story-stat-number saved-glow">${fmt(w.totalSaved)}</b>
             <span class="story-stat-sub">toward your shared future!</span>
           </div>
           <div class="story-dual-stats">
             <div class="story-dual-card">
-              <small>Total Spent</small>
+              <small>Spent so far</small>
               <b>${fmt(w.totalSpent)}</b>
             </div>
             <div class="story-dual-card">
-              <small>Annual Budget</small>
-              <b>${fmt(w.totalBudget)}</b>
+              <small>${w.isYtd ? `YTD Budget (${w.elapsedMonths} mos)` : "Annual Budget"}</small>
+              <b>${fmt(w.isYtd ? w.ytdBudget : w.totalBudget)}</b>
             </div>
           </div>
-          ${w.totalBudget > 0 ? `<div class="story-pill-tag">✨ ${((w.totalSaved / w.totalBudget) * 100).toFixed(0)}% of total budget saved</div>` : ""}
+          ${(w.isYtd ? w.ytdBudget : w.totalBudget) > 0 ? `<div class="story-pill-tag">✨ ${((w.totalSaved / (w.isYtd ? w.ytdBudget : w.totalBudget)) * 100).toFixed(0)}% of budget saved</div>` : ""}
         </div>`;
       break;
     case "investments": {
@@ -2167,9 +2167,12 @@ function renderWrappedStory() {
           <div class="story-badge">🐾 Mascot Happiness</div>
           <div class="story-mascot-score">
             <div class="story-mascot-big">${w.mascot.emoji}</div>
-            <h2 class="story-mascot-headline">${esc(w.mascot.name)} was happy ${w.happyMonthsCount} out of 12 months!</h2>
+            <h2 class="story-mascot-headline">${esc(w.mascot.name)} was happy ${w.happyMonthsCount} out of ${w.happyMonthsTotal} months so far! ✨</h2>
             <div class="story-month-dots">
               ${Array.from({ length: 12 }, (_, i) => {
+                if (i >= w.happyMonthsTotal) {
+                  return `<span class="story-dot dot-future" title="${MONTHS[i]} (upcoming)"></span>`;
+                }
                 const monthBudget = b.total > 0 ? b.total / 12 : 0;
                 const isHappy = monthBudget > 0 && (idx.months[i]?.total || 0) <= monthBudget;
                 return `<span class="story-dot ${isHappy ? "dot-happy" : "dot-missed"}" title="${MONTHS[i]}"></span>`;
@@ -2339,11 +2342,12 @@ function downloadWrappedCard(w) {
   ctx.fillRect(0, 0, 1080, 1920);
 
   // 3. Top pill badge
-  drawCanvasCard(ctx, 80, 130, 390, 56, 28, "rgba(255,255,255,0.12)", "rgba(255,255,255,0.2)");
+  const badgeW = w.isYtd ? 500 : 390;
+  drawCanvasCard(ctx, 80, 130, badgeW, 56, 28, "rgba(255,255,255,0.12)", "rgba(255,255,255,0.2)");
   ctx.font = "bold 24px Nunito, Fredoka, system-ui, sans-serif";
   ctx.fillStyle = accent;
   ctx.textAlign = "left";
-  ctx.fillText(`🎁 PIGGYNEST WRAPPED ${w.year}`, 108, 167);
+  ctx.fillText(`🎁 PIGGYNEST WRAPPED ${w.isYtd ? `YTD (JAN–${w.endMonthShortName.toUpperCase()})` : w.year}`, 108, 167);
 
   // 4. Family Name & Title
   ctx.font = "600 38px Nunito, Fredoka, system-ui, sans-serif";
@@ -2376,13 +2380,13 @@ function downloadWrappedCard(w) {
     drawCanvasCard(ctx, 80, 680, 920, 175, 20, "rgba(255,255,255,0.08)", "rgba(255,255,255,0.12)");
     ctx.font = "bold 20px Nunito, Fredoka, system-ui, sans-serif";
     ctx.fillStyle = accent;
-    ctx.fillText(`TOTAL SAVED IN ${w.year}`, 120, 725);
+    ctx.fillText(`TOTAL SAVED (${w.isYtd ? `JAN–${w.endMonthShortName.toUpperCase()}` : w.year})`, 120, 725);
     ctx.font = "800 48px Nunito, Fredoka, system-ui, sans-serif";
     ctx.fillStyle = "#4ade80";
     ctx.fillText(fmt(w.totalSaved), 120, 785);
     ctx.font = "400 22px Nunito, Fredoka, system-ui, sans-serif";
     ctx.fillStyle = "rgba(255, 255, 255, 0.65)";
-    ctx.fillText(`Annual Budget: ${fmt(w.totalBudget)}  •  Total Spent: ${fmt(w.totalSpent)}`, 120, 825);
+    ctx.fillText(`${w.isYtd ? `YTD Budget (${w.elapsedMonths} mos): ${fmt(w.ytdBudget)}` : `Annual Budget: ${fmt(w.totalBudget)}`}  •  Total Spent: ${fmt(w.totalSpent)}`, 120, 825);
 
     // Card 2: Wealth & Investments
     drawCanvasCard(ctx, 80, 875, 920, 175, 20, "rgba(255,255,255,0.08)", "rgba(255,255,255,0.12)");
@@ -2429,7 +2433,7 @@ function downloadWrappedCard(w) {
     ctx.fillText(`${w.mascot.name.toUpperCase()} HAPPINESS`, 120, 1505);
     ctx.font = "800 42px Nunito, Fredoka, system-ui, sans-serif";
     ctx.fillStyle = "#ffffff";
-    ctx.fillText(`${w.mascot.emoji} ${w.happyMonthsCount} / 12 Happy Months! ✨`, 120, 1565);
+    ctx.fillText(`${w.mascot.emoji} ${w.happyMonthsCount} / ${w.happyMonthsTotal} Happy Months! ✨`, 120, 1565);
     ctx.font = "400 22px Nunito, Fredoka, system-ui, sans-serif";
     ctx.fillStyle = "rgba(255, 255, 255, 0.65)";
     ctx.fillText(`Best Month: ${w.topMonth.name} (${fmt(w.topMonth.saved)} saved)`, 120, 1605);
@@ -2438,13 +2442,13 @@ function downloadWrappedCard(w) {
     drawCanvasCard(ctx, 80, 690, 920, 200, 22, "rgba(255,255,255,0.08)", "rgba(255,255,255,0.12)");
     ctx.font = "bold 22px Nunito, Fredoka, system-ui, sans-serif";
     ctx.fillStyle = accent;
-    ctx.fillText(`TOTAL SAVED IN ${w.year}`, 120, 740);
+    ctx.fillText(`TOTAL SAVED (${w.isYtd ? `JAN–${w.endMonthShortName.toUpperCase()}` : w.year})`, 120, 740);
     ctx.font = "800 56px Nunito, Fredoka, system-ui, sans-serif";
     ctx.fillStyle = "#4ade80";
     ctx.fillText(fmt(w.totalSaved), 120, 810);
     ctx.font = "400 24px Nunito, Fredoka, system-ui, sans-serif";
     ctx.fillStyle = "rgba(255, 255, 255, 0.65)";
-    ctx.fillText(`Annual Budget: ${fmt(w.totalBudget)}  •  Total Spent: ${fmt(w.totalSpent)}`, 120, 855);
+    ctx.fillText(`${w.isYtd ? `YTD Budget (${w.elapsedMonths} mos): ${fmt(w.ytdBudget)}` : `Annual Budget: ${fmt(w.totalBudget)}`}  •  Total Spent: ${fmt(w.totalSpent)}`, 120, 855);
 
     drawCanvasCard(ctx, 80, 920, 920, 200, 22, "rgba(255,255,255,0.08)", "rgba(255,255,255,0.12)");
     ctx.font = "bold 22px Nunito, Fredoka, system-ui, sans-serif";
@@ -2475,7 +2479,7 @@ function downloadWrappedCard(w) {
     ctx.fillText(`${w.mascot.name.toUpperCase()} HAPPINESS`, 120, 1430);
     ctx.font = "800 44px Nunito, Fredoka, system-ui, sans-serif";
     ctx.fillStyle = "#ffffff";
-    ctx.fillText(`${w.mascot.emoji} ${w.happyMonthsCount} / 12 Happy Months! ✨`, 120, 1492);
+    ctx.fillText(`${w.mascot.emoji} ${w.happyMonthsCount} / ${w.happyMonthsTotal} Happy Months! ✨`, 120, 1492);
     ctx.font = "400 24px Nunito, Fredoka, system-ui, sans-serif";
     ctx.fillStyle = "rgba(255, 255, 255, 0.65)";
     ctx.fillText(`Best Month: ${w.topMonth.name} (${fmt(w.topMonth.saved)} saved)`, 120, 1534);

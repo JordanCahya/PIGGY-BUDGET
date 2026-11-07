@@ -2486,3 +2486,7 @@ body { background: var(--bg); background-attachment: scroll; }
   background: #2a201b;
   border-color: #4a3a33;
 }
+.dot-future {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px dashed rgba(255, 255, 255, 0.25);
+}
