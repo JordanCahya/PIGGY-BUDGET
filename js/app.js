@@ -3728,7 +3728,10 @@ function openProDialog() {
   }
 
   dlg.innerHTML = `
-    <div class="dlg-body pro-dlg">
+    <div class="dlg-body pro-dlg" tabindex="-1">
+      <div style="display:flex;justify-content:flex-end;width:100%;margin-bottom:-10px;">
+        <button type="button" class="icon-btn sm" data-act="close-settings" aria-label="Close" autofocus style="background:transparent;border:none;font-size:1.15rem;cursor:pointer;color:var(--ink-soft);padding:4px 8px;line-height:1;">✕</button>
+      </div>
       <div class="pro-hero">
         <div class="pro-icon-sparkle">${adminUser ? "👑" : "💎"}</div>
         <h2>${adminUser ? "PiggyNest Admin" : (proActive ? "PiggyNest Pro Active" : "Unlock Piggy Pro ✨")}</h2>
@@ -3796,7 +3799,7 @@ function openProDialog() {
       <div class="pro-code-section">
         <small class="pro-code-label">Have an activation or promo code?</small>
         <form id="proCodeForm" class="pro-code-form" autocomplete="off">
-          <input type="text" id="proCodeInput" placeholder="Enter activation code" maxlength="30">
+          <input type="text" id="proCodeInput" placeholder="Enter activation code" maxlength="30" tabindex="-1">
           <button type="submit" class="btn btn-soft sm" id="btnActivateProCode">Activate</button>
         </form>
       </div>
@@ -3807,6 +3810,17 @@ function openProDialog() {
     </div>`;
 
   if (!dlg.open) dlg.showModal();
+
+  dlg.scrollTop = 0;
+  const body = dlg.querySelector(".dlg-body");
+  if (body) body.scrollTop = 0;
+  if (document.activeElement && document.activeElement.tagName === "INPUT") {
+    document.activeElement.blur();
+  }
+  requestAnimationFrame(() => {
+    dlg.scrollTop = 0;
+    if (body) body.scrollTop = 0;
+  });
 
   if (!proActive && !adminUser) {
     loadPayPalSdk(() => {
