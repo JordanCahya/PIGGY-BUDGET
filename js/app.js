@@ -21,6 +21,7 @@ import {
   normalizeRecurringBills,
   findPendingRecurringBills,
   getDueRecurringAlerts,
+  generateWrappedData,
   buildReceiptPrompt,
   parseReceiptResponse,
   calc,
@@ -1303,6 +1304,18 @@ function yearHtml() {
   const monthsWithSpend = idx.months.filter((x) => x.total > 0).length;
   const max = Math.max(monthly, ...idx.months.map((x) => x.total), 1) * 1.15;
 
+  const wrappedBanner = `
+    <section class="card wrapped-banner">
+      <div class="wrapped-banner-content">
+        <span class="wrapped-banner-icon">🎁</span>
+        <div>
+          <h2>${state.year} Piggy Wrapped</h2>
+          <p>Your couple financial journey, celebratory milestones, and superpower archetype.</p>
+        </div>
+      </div>
+      <button class="btn btn-primary" data-act="open-wrapped">Open ${state.year} Wrapped ✨</button>
+    </section>`;
+
   const bars = idx.months.map((mth, i) => `
     <button class="bar-col ${i === state.month ? "sel" : ""}" data-act="goto-month" data-m="${i}" aria-label="${MONTHS_LONG[i]}: ${fmt(mth.total)} spent">
       <div class="bar ${monthly > 0 && mth.total > monthly ? "over" : ""}" style="height:${(mth.total / max) * 100}%"></div>
@@ -1320,6 +1333,7 @@ function yearHtml() {
   }).join("");
 
   return `
+    ${wrappedBanner}
     ${!exists ? `<div class="notice"><span>No saved plan for ${state.year} yet.</span><button class="btn btn-soft" data-act="tab" data-tab="budget">Set up ${state.year} budget</button></div>` : ""}
     <section class="stats">
       <div class="card stat"><small>Yearly budget</small><b>${fmt(c.total)}</b></div>
@@ -1887,6 +1901,453 @@ async function deleteInvestment(id) {
     toast("Investment deleted");
   } catch (err) {
     toast("Couldn't delete: " + (err.message || err));
+  }
+}
+
+/* ================================================================== */
+/* Piggy Wrapped (Couple Year in Review)                               */
+/* ================================================================== */
+let currentWrappedSlide = 0;
+let currentWrappedData = null;
+
+function handleWrappedKeyDown(e) {
+  if (e.key === "Escape") {
+    closeWrappedStory();
+  } else if (e.key === "ArrowRight" || e.key === " ") {
+    advanceWrappedSlide(1);
+  } else if (e.key === "ArrowLeft") {
+    advanceWrappedSlide(-1);
+  }
+}
+
+function openWrappedStory() {
+  const s = settings();
+  currentWrappedData = generateWrappedData({
+    year: state.year,
+    budget: budgetFor(state.year).b,
+    expenses: state.expenses,
+    settings: s,
+  });
+  currentWrappedSlide = 0;
+  window.addEventListener("keydown", handleWrappedKeyDown);
+  renderWrappedStory();
+}
+
+function closeWrappedStory() {
+  window.removeEventListener("keydown", handleWrappedKeyDown);
+  const el = $("#wrappedModal");
+  if (el) {
+    el.classList.add("closing");
+    setTimeout(() => el.remove(), 200);
+  }
+}
+
+function advanceWrappedSlide(delta) {
+  const next = currentWrappedSlide + delta;
+  if (next < 0) return;
+  if (next > 5) {
+    closeWrappedStory();
+    return;
+  }
+  currentWrappedSlide = next;
+  renderWrappedStory();
+}
+
+function renderWrappedStory() {
+  if (!currentWrappedData) return;
+  const w = currentWrappedData;
+  const s = settings();
+  const topCat = w.topCategories?.[0] || null;
+  const runners = (w.topCategories || []).slice(1, 3);
+  const { b } = budgetFor(state.year);
+  const idx = spendIndex(state.year);
+
+  let slideHtml = "";
+  switch (currentWrappedSlide) {
+    case 0:
+      slideHtml = `
+        <div class="story-slide slide-welcome">
+          <div class="story-badge">🎁 Piggy Wrapped ${w.year}</div>
+          <div class="story-mascot-hero">${w.mascot.emoji}</div>
+          <h1 class="story-title">${esc(s.familyName)}'s ${w.year}</h1>
+          <p class="story-subtitle">Ready to see how you handled your money together in ${w.year}?</p>
+          <div class="story-hint">Tap anywhere on the right to continue →</div>
+        </div>`;
+      break;
+    case 1:
+      slideHtml = `
+        <div class="story-slide slide-savings">
+          <div class="story-badge">🌱 The Big Picture</div>
+          <div class="story-stat-hero">
+            <span class="story-stat-label">Together in ${w.year}, you saved</span>
+            <b class="story-stat-number saved-glow">${fmt(w.totalSaved)}</b>
+            <span class="story-stat-sub">toward your shared future!</span>
+          </div>
+          <div class="story-dual-stats">
+            <div class="story-dual-card">
+              <small>Total Spent</small>
+              <b>${fmt(w.totalSpent)}</b>
+            </div>
+            <div class="story-dual-card">
+              <small>Annual Budget</small>
+              <b>${fmt(w.totalBudget)}</b>
+            </div>
+          </div>
+          ${w.totalBudget > 0 ? `<div class="story-pill-tag">✨ ${((w.totalSaved / w.totalBudget) * 100).toFixed(0)}% of total budget saved</div>` : ""}
+        </div>`;
+      break;
+    case 2:
+      slideHtml = `
+        <div class="story-slide slide-categories">
+          <div class="story-badge">📊 Spending Spotlight</div>
+          ${topCat ? `
+            <div class="story-ranked-hero">
+              <div class="story-ranked-medal">🥇 #1 Category</div>
+              <div class="story-cat-emoji">${topCat.emoji}</div>
+              <h2 class="story-cat-name">${esc(topCat.name)}</h2>
+              <b class="story-cat-amount">${fmt(topCat.totalSpent)}</b>
+              <span class="story-cat-pct">${topCat.percentage.toFixed(1)}% of all spending</span>
+            </div>
+            ${runners.length > 0 ? `
+              <div class="story-runners-box">
+                <small class="story-runners-title">Runner Ups</small>
+                ${runners.map((r, i) => `
+                  <div class="story-runner-item">
+                    <span>#${i + 2} ${r.emoji} ${esc(r.name)}</span>
+                    <b>${fmt(r.totalSpent)} <small>(${r.percentage.toFixed(0)}%)</small></b>
+                  </div>
+                `).join("")}
+              </div>
+            ` : ""}
+          ` : `
+            <div class="story-empty-notice">
+              <div style="font-size:3rem;margin-bottom:12px;">📝</div>
+              <p>No expenses logged for ${w.year} yet!</p>
+            </div>
+          `}
+        </div>`;
+      break;
+    case 3:
+      slideHtml = `
+        <div class="story-slide slide-generosity">
+          <div class="story-badge">💖 The Generosity Award</div>
+          <div class="story-award-hero">
+            <div class="story-award-crown">👑</div>
+            <div class="story-award-winner">${w.generosityAward.emoji} ${esc(w.generosityAward.name)}</div>
+            <p class="story-award-tagline">${w.generosityAward.winner === "tie" ? "You shared the financial load equally!" : `won the Generosity Award for ${w.year}!`}</p>
+          </div>
+          <div class="story-partner-split">
+            <div class="story-partner-col">
+              <span class="partner-avatar">${esc(s.persons[0].emoji)}</span>
+              <b>${esc(s.persons[0].name)}</b>
+              <span class="partner-pct">${w.partnerShares.p1Percent.toFixed(0)}%</span>
+              <small class="partner-amt">${fmt(w.partnerShares.p1)}</small>
+            </div>
+            <div class="story-partner-vs">vs</div>
+            <div class="story-partner-col">
+              <span class="partner-avatar">${esc(s.persons[1].emoji)}</span>
+              <b>${esc(s.persons[1].name)}</b>
+              <span class="partner-pct">${w.partnerShares.p2Percent.toFixed(0)}%</span>
+              <small class="partner-amt">${fmt(w.partnerShares.p2)}</small>
+            </div>
+          </div>
+          ${w.partnerShares.both > 0 ? `<div class="story-shared-note">🤝 Plus ${fmt(w.partnerShares.both)} shared together 50/50</div>` : ""}
+        </div>`;
+      break;
+    case 4:
+      slideHtml = `
+        <div class="story-slide slide-mascot">
+          <div class="story-badge">🐾 Mascot Happiness</div>
+          <div class="story-mascot-score">
+            <div class="story-mascot-big">${w.mascot.emoji}</div>
+            <h2 class="story-mascot-headline">${esc(w.mascot.name)} was happy ${w.happyMonthsCount} out of 12 months!</h2>
+            <div class="story-month-dots">
+              ${Array.from({ length: 12 }, (_, i) => {
+                const monthBudget = b.total > 0 ? b.total / 12 : 0;
+                const isHappy = monthBudget > 0 && (idx.months[i]?.total || 0) <= monthBudget;
+                return `<span class="story-dot ${isHappy ? "dot-happy" : "dot-missed"}" title="${MONTHS[i]}"></span>`;
+              }).join("")}
+            </div>
+          </div>
+          <div class="story-best-month-card">
+            <span class="best-month-label">🌟 Best Month</span>
+            <b class="best-month-name">${esc(w.topMonth.name)}</b>
+            <span class="best-month-stat">${w.topMonth.saved > 0 ? `${fmt(w.topMonth.saved)} saved!` : `Lowest spending (${fmt(w.topMonth.spent)})`}</span>
+          </div>
+        </div>`;
+      break;
+    case 5:
+    default:
+      slideHtml = `
+        <div class="story-slide slide-archetype">
+          <div class="story-badge">✨ Your Financial Superpower</div>
+          <div class="story-archetype-card">
+            <div class="archetype-emoji-badge">${w.archetype.emoji}</div>
+            <h2 class="archetype-title">${esc(w.archetype.title)}</h2>
+            <p class="archetype-desc">${esc(w.archetype.description)}</p>
+          </div>
+          <div class="story-summary-chips">
+            <span class="story-chip">🌱 Saved: ${fmt(w.totalSaved)}</span>
+            <span class="story-chip">👑 Generosity: ${esc(w.generosityAward.name)}</span>
+            <span class="story-chip">🐾 ${w.happyMonthsCount}/12 Happy</span>
+          </div>
+          <div class="story-final-actions">
+            <button type="button" class="btn btn-primary" id="btnDownloadWrappedCard" data-act="download-wrapped">📸 Save Story Card</button>
+            <button type="button" class="btn btn-ghost" data-act="close-wrapped">Back to Dashboard</button>
+          </div>
+        </div>`;
+      break;
+  }
+
+  let el = $("#wrappedModal");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "wrappedModal";
+    el.className = "wrapped-modal";
+    document.body.appendChild(el);
+  }
+
+  el.innerHTML = `
+    <div class="wrapped-modal-inner">
+      <div class="story-progress-bar">
+        ${[0, 1, 2, 3, 4, 5].map((i) => `
+          <div class="story-progress-seg ${i <= currentWrappedSlide ? "filled" : ""}"></div>
+        `).join("")}
+      </div>
+      <div class="story-header">
+        <div class="story-brand">
+          <span>${w.mascot.emoji}</span>
+          <span>Piggy Wrapped ${w.year}</span>
+        </div>
+        <button type="button" class="story-close-btn" data-act="close-wrapped" aria-label="Close">✕</button>
+      </div>
+
+      <div class="story-tap-zone tap-prev" data-act="wrapped-prev"></div>
+      <div class="story-tap-zone tap-next" data-act="wrapped-next"></div>
+
+      <div class="story-content-area">
+        ${slideHtml}
+      </div>
+
+      <div class="story-bottom-nav">
+        ${currentWrappedSlide > 0 ? `
+          <button type="button" class="btn btn-ghost sm story-nav-btn" data-act="wrapped-prev">‹ Back</button>
+        ` : `<div style="width:55px;"></div>`}
+
+        <span class="story-slide-counter">${currentWrappedSlide + 1} / 6</span>
+
+        ${currentWrappedSlide < 5 ? `
+          <button type="button" class="btn btn-soft sm story-nav-btn" data-act="wrapped-next">Next ›</button>
+        ` : `<div style="width:55px;"></div>`}
+      </div>
+    </div>`;
+}
+
+function wrapCanvasText(ctx, text, x, y, maxWidth, lineHeight) {
+  const words = String(text || "").split(" ");
+  let line = "";
+  for (let n = 0; n < words.length; n++) {
+    const testLine = line + words[n] + " ";
+    const metrics = ctx.measureText(testLine);
+    if (metrics.width > maxWidth && n > 0) {
+      ctx.fillText(line.trim(), x, y);
+      line = words[n] + " ";
+      y += lineHeight;
+    } else {
+      line = testLine;
+    }
+  }
+  ctx.fillText(line.trim(), x, y);
+  return y;
+}
+
+function drawCanvasCard(ctx, x, y, w, h, r, fill, stroke) {
+  ctx.beginPath();
+  if (typeof ctx.roundRect === "function") {
+    ctx.roundRect(x, y, w, h, r);
+  } else {
+    ctx.rect(x, y, w, h);
+  }
+  if (fill) {
+    ctx.fillStyle = fill;
+    ctx.fill();
+  }
+  if (stroke) {
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+}
+
+function downloadWrappedCard(w) {
+  if (!w) return;
+  const s = settings();
+  const canvas = document.createElement("canvas");
+  canvas.width = 1080;
+  canvas.height = 1920;
+  const ctx = canvas.getContext("2d");
+
+  // Determine theme colors
+  const themeId = s.theme || "default";
+  let grad1 = "#251821";
+  let grad2 = "#140e13";
+  let accent = "#ff8fb1";
+  if (themeId === "mocha") {
+    grad1 = "#2c211b";
+    grad2 = "#17110e";
+    accent = "#d4a373";
+  } else if (themeId === "matcha") {
+    grad1 = "#1d2b1f";
+    grad2 = "#0e1710";
+    accent = "#7cb587";
+  } else if (themeId === "lavender") {
+    grad1 = "#251c36";
+    grad2 = "#130e1d";
+    accent = "#a688fa";
+  } else if (themeId === "honey") {
+    grad1 = "#32220f";
+    grad2 = "#191107";
+    accent = "#f4b251";
+  }
+
+  // 1. Background gradient
+  const bgGrad = ctx.createLinearGradient(0, 0, 0, 1920);
+  bgGrad.addColorStop(0, grad1);
+  bgGrad.addColorStop(1, grad2);
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(0, 0, 1080, 1920);
+
+  // 2. Ambient glows
+  const glow1 = ctx.createRadialGradient(920, 280, 20, 920, 280, 500);
+  glow1.addColorStop(0, accent + "33");
+  glow1.addColorStop(1, "transparent");
+  ctx.fillStyle = glow1;
+  ctx.fillRect(0, 0, 1080, 1920);
+
+  const glow2 = ctx.createRadialGradient(160, 1400, 20, 160, 1400, 500);
+  glow2.addColorStop(0, accent + "22");
+  glow2.addColorStop(1, "transparent");
+  ctx.fillStyle = glow2;
+  ctx.fillRect(0, 0, 1080, 1920);
+
+  // 3. Top pill badge
+  drawCanvasCard(ctx, 80, 130, 390, 56, 28, "rgba(255,255,255,0.12)", "rgba(255,255,255,0.2)");
+  ctx.font = "bold 24px Nunito, Fredoka, system-ui, sans-serif";
+  ctx.fillStyle = accent;
+  ctx.textAlign = "left";
+  ctx.fillText(`🎁 PIGGYNEST WRAPPED ${w.year}`, 108, 167);
+
+  // 4. Family Name & Title
+  ctx.font = "600 38px Nunito, Fredoka, system-ui, sans-serif";
+  ctx.fillStyle = "rgba(255, 255, 255, 0.75)";
+  ctx.fillText(`${s.familyName || "Our Cozy Family"}'s`, 80, 240);
+
+  ctx.font = "800 76px Nunito, Fredoka, system-ui, sans-serif";
+  ctx.fillStyle = "#ffffff";
+  ctx.fillText("Year in Review", 80, 320);
+
+  // 5. Archetype Hero Box
+  drawCanvasCard(ctx, 80, 370, 920, 290, 26, "rgba(255,255,255,0.09)", "rgba(255,255,255,0.16)");
+  ctx.font = "92px serif";
+  ctx.textAlign = "center";
+  ctx.fillText(w.archetype.emoji || "🏆", 170, 510);
+
+  ctx.textAlign = "left";
+  ctx.font = "bold 44px Nunito, Fredoka, system-ui, sans-serif";
+  ctx.fillStyle = "#fde68a";
+  ctx.fillText(w.archetype.title, 260, 460);
+
+  ctx.font = "400 28px Nunito, Fredoka, system-ui, sans-serif";
+  ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+  wrapCanvasText(ctx, w.archetype.description, 260, 515, 710, 38);
+
+  // 6. Card 1: Total Saved
+  drawCanvasCard(ctx, 80, 690, 920, 200, 22, "rgba(255,255,255,0.08)", "rgba(255,255,255,0.12)");
+  ctx.font = "bold 22px Nunito, Fredoka, system-ui, sans-serif";
+  ctx.fillStyle = accent;
+  ctx.fillText(`TOTAL SAVED IN ${w.year}`, 120, 740);
+
+  ctx.font = "800 56px Nunito, Fredoka, system-ui, sans-serif";
+  ctx.fillStyle = "#4ade80";
+  ctx.fillText(fmt(w.totalSaved), 120, 810);
+
+  ctx.font = "400 24px Nunito, Fredoka, system-ui, sans-serif";
+  ctx.fillStyle = "rgba(255, 255, 255, 0.65)";
+  ctx.fillText(`Annual Budget: ${fmt(w.totalBudget)}  •  Total Spent: ${fmt(w.totalSpent)}`, 120, 855);
+
+  // 7. Card 2: Top Spending Category
+  drawCanvasCard(ctx, 80, 920, 920, 200, 22, "rgba(255,255,255,0.08)", "rgba(255,255,255,0.12)");
+  ctx.font = "bold 22px Nunito, Fredoka, system-ui, sans-serif";
+  ctx.fillStyle = accent;
+  ctx.fillText("TOP SPENDING CATEGORY", 120, 970);
+
+  const topC = w.topCategories?.[0];
+  ctx.font = "800 50px Nunito, Fredoka, system-ui, sans-serif";
+  ctx.fillStyle = "#ffffff";
+  ctx.fillText(`${topC?.emoji || "📦"} ${topC?.name || "None yet"}`, 120, 1038);
+
+  ctx.font = "400 24px Nunito, Fredoka, system-ui, sans-serif";
+  ctx.fillStyle = "rgba(255, 255, 255, 0.65)";
+  ctx.fillText(topC ? `${fmt(topC.totalSpent)}  (${topC.percentage.toFixed(1)}% of total spend)` : "No expenses recorded", 120, 1080);
+
+  // 8. Card 3: The Generosity Award
+  drawCanvasCard(ctx, 80, 1150, 920, 200, 22, "rgba(255,255,255,0.08)", "rgba(255,255,255,0.12)");
+  ctx.font = "bold 22px Nunito, Fredoka, system-ui, sans-serif";
+  ctx.fillStyle = accent;
+  ctx.fillText("THE GENEROSITY AWARD", 120, 1200);
+
+  ctx.font = "800 50px Nunito, Fredoka, system-ui, sans-serif";
+  ctx.fillStyle = "#fef08a";
+  ctx.fillText(`👑 ${w.generosityAward.name}`, 120, 1268);
+
+  ctx.font = "400 24px Nunito, Fredoka, system-ui, sans-serif";
+  ctx.fillStyle = "rgba(255, 255, 255, 0.65)";
+  ctx.fillText(`${s.persons[0].name} (${w.partnerShares.p1Percent.toFixed(0)}%) vs ${s.persons[1].name} (${w.partnerShares.p2Percent.toFixed(0)}%) partner split`, 120, 1310);
+
+  // 9. Card 4: Mascot Happiness & Best Month
+  drawCanvasCard(ctx, 80, 1380, 920, 190, 22, "rgba(255,255,255,0.08)", "rgba(255,255,255,0.12)");
+  ctx.font = "bold 22px Nunito, Fredoka, system-ui, sans-serif";
+  ctx.fillStyle = accent;
+  ctx.fillText(`${w.mascot.name.toUpperCase()} HAPPINESS`, 120, 1430);
+
+  ctx.font = "800 44px Nunito, Fredoka, system-ui, sans-serif";
+  ctx.fillStyle = "#ffffff";
+  ctx.fillText(`${w.mascot.emoji} ${w.happyMonthsCount} / 12 Happy Months! ✨`, 120, 1492);
+
+  ctx.font = "400 24px Nunito, Fredoka, system-ui, sans-serif";
+  ctx.fillStyle = "rgba(255, 255, 255, 0.65)";
+  ctx.fillText(`Best Month: ${w.topMonth.name} (${fmt(w.topMonth.saved)} saved)`, 120, 1534);
+
+  // 10. Footer
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.15)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(80, 1680);
+  ctx.lineTo(1000, 1680);
+  ctx.stroke();
+
+  ctx.font = "600 30px Nunito, Fredoka, system-ui, sans-serif";
+  ctx.fillStyle = "rgba(255, 255, 255, 0.6)";
+  ctx.fillText("PiggyNest • Cozy Couple Budgeting", 80, 1750);
+
+  ctx.font = "40px serif";
+  ctx.textAlign = "right";
+  ctx.fillText(w.mascot.emoji, 1000, 1750);
+
+  // 11. Trigger PNG download
+  try {
+    const dataUrl = canvas.toDataURL("image/png");
+    const a = document.createElement("a");
+    const safeFamily = (s.familyName || "PiggyNest").replace(/[^a-zA-Z0-9_-]/g, "_");
+    a.download = `${safeFamily}-${w.year}-Wrapped.png`;
+    a.href = dataUrl;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    toast("📸 Story card downloaded!");
+  } catch (err) {
+    console.error("Canvas export error:", err);
+    toast("Couldn't export card: " + (err.message || err));
   }
 }
 
@@ -2820,11 +3281,21 @@ document.addEventListener("click", async (ev) => {
     return;
   }
 
+  if (ev.target.closest("#btnDownloadWrappedCard")) {
+    downloadWrappedCard(currentWrappedData);
+    return;
+  }
+
   const el = ev.target.closest("[data-act]");
   if (!el) return;
   const act = el.dataset.act;
   switch (act) {
     case "tab": setTab(el.dataset.tab); break;
+    case "open-wrapped": openWrappedStory(); break;
+    case "close-wrapped": closeWrappedStory(); break;
+    case "wrapped-prev": advanceWrappedSlide(-1); break;
+    case "wrapped-next": advanceWrappedSlide(1); break;
+    case "download-wrapped": downloadWrappedCard(currentWrappedData); break;
     case "quick-add": setTab("expenses"); $("#expForm")?.amount.focus({ preventScroll: true }); break;
     case "open-pro": openProDialog(); break;
     case "cancel-pro-sub": {

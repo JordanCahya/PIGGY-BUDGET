@@ -433,3 +433,279 @@ export function validateBackupPayload(raw) {
     },
   };
 }
+
+export function generateWrappedData({ year, budget, expenses = [], settings = {} } = {}) {
+  const targetYear = Number(year) || (budget && Number(budget.year)) || new Date().getFullYear();
+
+  // 1. Yearly budget calculation
+  const normBudget = normalizeBudget(budget);
+  const calculatedBudget = (budget && Array.isArray(budget.cats) && typeof budget.total === "number")
+    ? budget
+    : calc(normBudget);
+  const totalBudget = Math.max(0, Number(calculatedBudget.total) || 0);
+  const monthBudget = totalBudget > 0 ? totalBudget / 12 : 0;
+
+  // 2. Spending aggregation via spendIndex
+  const safeExpenses = Array.isArray(expenses) ? expenses : [];
+  const { byCat, months } = spendIndex(targetYear, safeExpenses);
+
+  // Filter valid expenses for that year
+  const yearExpenses = safeExpenses.filter((e) => {
+    if (!e || typeof e !== "object") return false;
+    if (typeof e.date !== "string" || !e.date.startsWith(`${targetYear}-`)) return false;
+    const mi = Number(e.date.slice(5, 7)) - 1;
+    return mi >= 0 && mi <= 11;
+  });
+
+  // Total spent
+  let p1Paid = 0;
+  let p2Paid = 0;
+  let bothPaid = 0;
+  const activeMonthIndices = new Set();
+
+  for (const e of yearExpenses) {
+    const amt = Math.max(0, Number(e.amount) || 0);
+    const mi = Number(e.date.slice(5, 7)) - 1;
+    activeMonthIndices.add(mi);
+
+    if (e.paidBy === "both") {
+      bothPaid += amt;
+    } else if (e.paidBy === "p2") {
+      p2Paid += amt;
+    } else {
+      p1Paid += amt;
+    }
+  }
+
+  const totalSpent = p1Paid + p2Paid + bothPaid;
+  const totalSaved = Math.max(0, totalBudget - totalSpent);
+
+  // 3. Happy Months: number of months where month total spent <= monthBudget
+  const happyMonthsCount = monthBudget > 0
+    ? months.filter((m) => m.total <= monthBudget).length
+    : 0;
+
+  // 4. Top Categories
+  const catMetaMap = new Map();
+  for (const c of calculatedBudget.cats || []) {
+    if (c && c.id) {
+      catMetaMap.set(String(c.id), {
+        id: c.id,
+        emoji: c.emoji || "✨",
+        name: c.name || "Untitled",
+        color: c.color,
+      });
+    }
+  }
+
+  const topCategories = [];
+  for (const [catId, monthRows] of Object.entries(byCat)) {
+    const catSpent = monthRows.reduce((sum, m) => sum + m.total, 0);
+    if (catSpent <= 0) continue;
+    const meta = catMetaMap.get(String(catId)) || {
+      id: catId,
+      emoji: "📦",
+      name: "Other",
+    };
+    topCategories.push({
+      id: meta.id,
+      emoji: meta.emoji,
+      name: meta.name,
+      color: meta.color,
+      totalSpent: catSpent,
+      amount: catSpent,
+      percentage: totalSpent > 0 ? (catSpent / totalSpent) * 100 : 0,
+    });
+  }
+  topCategories.sort((a, b) => b.totalSpent - a.totalSpent);
+
+  // 5. Partner Shares & Generosity Award
+  const p1Person = (settings && Array.isArray(settings.persons) && settings.persons[0])
+    ? settings.persons[0]
+    : { id: "p1", name: "Partner 1", emoji: "🌸" };
+  const p2Person = (settings && Array.isArray(settings.persons) && settings.persons[1])
+    ? settings.persons[1]
+    : { id: "p2", name: "Partner 2", emoji: "🌿" };
+
+  const p1Effective = p1Paid + (bothPaid / 2);
+  const p2Effective = p2Paid + (bothPaid / 2);
+  const p1Percent = totalSpent > 0 ? (p1Effective / totalSpent) * 100 : 0;
+  const p2Percent = totalSpent > 0 ? (p2Effective / totalSpent) * 100 : 0;
+  const bothPercent = totalSpent > 0 ? (bothPaid / totalSpent) * 100 : 0;
+
+  let generosityWinner = "tie";
+  let generosityName = "Both";
+  let generosityEmoji = "🤝";
+
+  if (p1Paid > p2Paid) {
+    generosityWinner = "p1";
+    generosityName = p1Person.name;
+    generosityEmoji = p1Person.emoji;
+  } else if (p2Paid > p1Paid) {
+    generosityWinner = "p2";
+    generosityName = p2Person.name;
+    generosityEmoji = p2Person.emoji;
+  } else if (totalSpent === 0) {
+    generosityWinner = "none";
+    generosityName = "Neither";
+    generosityEmoji = "🐷";
+  }
+
+  const generosityAward = {
+    winner: generosityWinner,
+    name: generosityName,
+    emoji: generosityEmoji,
+  };
+
+  const partnerShares = {
+    p1: p1Paid,
+    p2: p2Paid,
+    both: bothPaid,
+    p1Total: p1Paid,
+    p2Total: p2Paid,
+    bothTotal: bothPaid,
+    p1Effective,
+    p2Effective,
+    p1Percent,
+    p2Percent,
+    bothPercent,
+    p1Pct: p1Percent,
+    p2Pct: p2Percent,
+    bothPct: bothPercent,
+    generosityAward,
+    generosityWinner,
+    generosityName,
+    generosityEmoji,
+  };
+
+  // 6. Top Month (highest savings or lowest spend)
+  const MONTH_NAMES = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+  ];
+  const MONTH_SHORT = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+  ];
+
+  let bestMi = 0;
+  let lowestSpend = Infinity;
+
+  if (activeMonthIndices.size > 0) {
+    for (const mi of activeMonthIndices) {
+      const spent = months[mi].total;
+      if (spent < lowestSpend) {
+        lowestSpend = spent;
+        bestMi = mi;
+      }
+    }
+  } else {
+    lowestSpend = 0;
+  }
+
+  const bestMonthSpent = lowestSpend === Infinity ? 0 : lowestSpend;
+  const topMonth = {
+    monthIndex: bestMi,
+    month: bestMi + 1,
+    name: MONTH_NAMES[bestMi],
+    monthName: MONTH_NAMES[bestMi],
+    shortName: MONTH_SHORT[bestMi],
+    spent: bestMonthSpent,
+    saved: Math.max(0, monthBudget - bestMonthSpent),
+  };
+
+  // 7. Couple Archetype
+  const makeArchetype = (id, name, emoji, description) => ({
+    id,
+    name,
+    title: name,
+    emoji,
+    description,
+    toString() { return this.name; },
+    [Symbol.toPrimitive]() { return this.name; },
+  });
+
+  let archetype;
+  const topCatName = topCategories.length > 0 ? (topCategories[0].name || "").toLowerCase() : "";
+  const topCatEmoji = topCategories.length > 0 ? topCategories[0].emoji : "";
+
+  if (totalBudget > 0 && (totalSaved / totalBudget) >= 0.2) {
+    archetype = makeArchetype(
+      "goal_crushers",
+      "The Goal Crushers",
+      "🏆",
+      "You crushed your savings goals this year! Over 20% of your total budget was saved."
+    );
+  } else if (
+    topCatName.includes("food") ||
+    topCatName.includes("grocer") ||
+    topCatName.includes("dining") ||
+    topCatEmoji === "🍙" ||
+    topCatEmoji === "🍔"
+  ) {
+    archetype = makeArchetype(
+      "savvy_foodies",
+      "The Savvy Foodies",
+      "🍙",
+      "Good food is your shared love language! Food & groceries topped your spending charts."
+    );
+  } else if (totalSpent > 0 && Math.abs(p1Percent - p2Percent) <= 5) {
+    archetype = makeArchetype(
+      "balanced_duo",
+      "The Balanced Duo",
+      "⚖️",
+      "Perfect harmony! You and your partner shared expenses almost 50/50."
+    );
+  } else if (
+    topCatName.includes("home") ||
+    topCatName.includes("rent") ||
+    topCatName.includes("bill") ||
+    topCatName.includes("util") ||
+    topCatEmoji === "🏠" ||
+    topCatEmoji === "💡"
+  ) {
+    archetype = makeArchetype(
+      "nest_builders",
+      "The Nest Builders",
+      "🏡",
+      "Home is where the heart is! You invested most into making your cozy nest comfortable."
+    );
+  } else if (
+    topCatName.includes("fun") ||
+    topCatName.includes("entertain") ||
+    topCatName.includes("travel") ||
+    topCatEmoji === "🎈" ||
+    topCatEmoji === "✈️"
+  ) {
+    archetype = makeArchetype(
+      "joy_seekers",
+      "The Joy Seekers",
+      "🎈",
+      "Life is an adventure! You made sure to budget for happiness, fun, and memorable experiences."
+    );
+  } else {
+    archetype = makeArchetype(
+      "cozy_partners",
+      "The Cozy Partners",
+      "🐷",
+      "Building a brighter financial future together, step by cozy step."
+    );
+  }
+
+  // 8. Active Mascot
+  const mascot = getMascot(settings?.mascot);
+
+  return {
+    year: targetYear,
+    totalSpent,
+    totalBudget,
+    totalSaved,
+    happyMonthsCount,
+    topCategories,
+    partnerShares,
+    generosityAward,
+    topMonth,
+    archetype,
+    mascot,
+  };
+}
