@@ -2490,3 +2490,442 @@ body { background: var(--bg); background-attachment: scroll; }
   background: rgba(255, 255, 255, 0.08);
   border: 1px dashed rgba(255, 255, 255, 0.25);
 }
+/* ---------- Phase 5: Sinking Funds (Piggy Jars) ---------- */
+.jars-section {
+  margin-top: 18px;
+}
+.jars-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+.jars-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.jars-title h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+.jars-sub {
+  color: var(--ink-soft);
+  font-size: 0.88rem;
+  margin: 0 0 16px;
+}
+.jars-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+}
+.jar-card {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 16px;
+  background: var(--card-bg, #fff);
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.jar-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.05);
+}
+.jar-card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.jar-badge {
+  font-size: 2rem;
+  line-height: 1;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: var(--bg-soft, rgba(0, 0, 0, 0.03));
+}
+.jar-info {
+  flex: 1;
+  min-width: 0;
+}
+.jar-name {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.jar-target-date {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  margin-top: 2px;
+}
+.jar-card-tools {
+  display: flex;
+  gap: 4px;
+}
+.jar-amounts {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.jar-saved {
+  font-size: 0.95rem;
+  color: var(--ink);
+}
+.jar-target {
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+.jar-footer {
+  margin-top: 8px;
+  margin-bottom: 12px;
+}
+.jar-pace {
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+.jar-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: auto;
+}
+.jar-actions button {
+  flex: 1;
+}
+.empty-jars {
+  text-align: center;
+  padding: 24px;
+  background: var(--bg-soft, rgba(0, 0, 0, 0.02));
+  border-radius: 14px;
+  border: 1px dashed var(--line);
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+}
+
+/* ---------- Phase 5: Partner Activity Feed & Reactions ---------- */
+.feed-card {
+  margin-top: 18px;
+}
+.feed-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+}
+.feed-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.feed-title h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+.feed-toggle-icon {
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+.feed-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+.feed-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--bg-soft, rgba(0, 0, 0, 0.02));
+}
+.feed-item-icon {
+  font-size: 1.25rem;
+  line-height: 1;
+  margin-top: 2px;
+}
+.feed-item-main {
+  flex: 1;
+  min-width: 0;
+}
+.feed-item-main p {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--ink);
+  line-height: 1.35;
+}
+.feed-item-main small {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+  margin-top: 2px;
+}
+
+/* Reactions on Expense Rows */
+.exp-reactions {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+.exp-reaction-chip {
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #fff1f2;
+  border: 1px solid #fecdd3;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.exp-react-trigger {
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  opacity: 0.8;
+}
+.exp-react-trigger:hover {
+  opacity: 1;
+  color: #e11d48;
+}
+.reaction-emoji-bar {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+.reaction-emoji-btn {
+  font-size: 1.6rem;
+  line-height: 1;
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--card-bg, #fff);
+  cursor: pointer;
+  transition: transform 0.12s;
+}
+.reaction-emoji-btn:hover {
+  transform: scale(1.18);
+}
+.reaction-emoji-btn.active {
+  border-color: #f43f5e;
+  background: #ffe4e6;
+}
+
+/* ---------- Phase 5: Smart Category Cap Alerts ---------- */
+.cat-cap-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 999px;
+  letter-spacing: 0.2px;
+}
+.cat-cap-badge.cap-warn {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fde68a;
+}
+.cat-cap-badge.cap-danger {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fca5a5;
+}
+.cat-cap-badge.cap-ok {
+  background: #def7ec;
+  color: #03543f;
+  border: 1px solid #bcf0da;
+}
+.cat-cap-hint-box {
+  margin-top: 6px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  animation: fadeIn 0.15s ease-out;
+}
+.cat-cap-hint-box.cap-warn {
+  background: #fffbeb;
+  color: #92400e;
+  border: 1px solid #fcd34d;
+}
+.cat-cap-hint-box.cap-danger {
+  background: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #f87171;
+}
+.cat-cap-hint-box.cap-ok {
+  background: #f0fdf4;
+  color: #166534;
+  border: 1px solid #86efac;
+}
+
+/* ---------- Phase 5: Future Nest Compound Calculator ---------- */
+.compound-calc-card {
+  margin-top: 20px;
+  background: linear-gradient(135deg, #fdfbf7 0%, #fffbf2 50%, #f7f9fd 100%);
+  border: 1.5px solid var(--line);
+}
+.compound-calc-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.compound-calc-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.compound-calc-title h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+.compound-calc-desc {
+  color: var(--ink-soft);
+  font-size: 0.88rem;
+  margin: 0 0 16px;
+}
+.compound-hero-stat {
+  text-align: center;
+  padding: 18px 20px;
+  border-radius: 18px;
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--line);
+  margin-bottom: 14px;
+}
+.compound-hero-label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--ink-soft);
+  margin-bottom: 4px;
+}
+.compound-hero-num {
+  display: block;
+  font-size: 2.4rem;
+  font-weight: 800;
+  color: #2563eb;
+  font-family: var(--font-display, inherit);
+  line-height: 1.1;
+}
+.compound-hero-sub {
+  display: block;
+  font-size: 0.88rem;
+  color: var(--ink-soft);
+  margin-top: 6px;
+}
+.compound-dual-breakdown {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.compound-mini-card {
+  padding: 12px;
+  border-radius: 14px;
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--line);
+}
+.compound-mini-card small {
+  display: block;
+  font-size: 0.76rem;
+  color: var(--ink-soft);
+  margin-bottom: 4px;
+}
+.compound-mini-card b {
+  font-size: 1.15rem;
+  color: var(--ink);
+}
+.compound-mini-card.highlight b {
+  color: #059669;
+}
+.compound-controls {
+  padding: 16px;
+  border-radius: 16px;
+  background: var(--bg-soft, rgba(0, 0, 0, 0.02));
+  border: 1px solid var(--line);
+}
+.compound-control-row label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.9rem;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.compound-control-row input[type="range"] {
+  width: 100%;
+  accent-color: #2563eb;
+}
+.compound-quick-btns {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+/* Dark Mocha theme overrides */
+[data-theme="mocha"] .jar-card {
+  background: #332722;
+  border-color: #4a3a33;
+}
+[data-theme="mocha"] .jar-badge {
+  background: #281e19;
+}
+[data-theme="mocha"] .empty-jars {
+  background: #2b211c;
+  border-color: #4a3a33;
+}
+[data-theme="mocha"] .feed-item {
+  background: #382c26;
+}
+[data-theme="mocha"] .exp-reaction-chip {
+  background: #4c1d24;
+  border-color: #831843;
+  color: #fda4af;
+}
+[data-theme="mocha"] .compound-calc-card {
+  background: linear-gradient(135deg, #2e231e 0%, #251c18 50%, #1f1814 100%);
+  border-color: #4a3a33;
+}
+[data-theme="mocha"] .compound-hero-stat,
+[data-theme="mocha"] .compound-mini-card {
+  background: #382c26;
+  border-color: #4a3a33;
+}
+[data-theme="mocha"] .compound-hero-num {
+  color: #93c5fd;
+}
+[data-theme="mocha"] .compound-controls {
+  background: #2b211c;
+  border-color: #4a3a33;
+}
+[data-theme="mocha"] .cat-cap-hint-box.cap-warn {
+  background: #452a12;
+  color: #fde68a;
+  border-color: #78350f;
+}
+[data-theme="mocha"] .cat-cap-hint-box.cap-danger {
+  background: #451a1a;
+  color: #fca5a5;
+  border-color: #7f1d1d;
+}
+[data-theme="mocha"] .cat-cap-hint-box.cap-ok {
+  background: #173722;
+  color: #86efac;
+  border-color: #14532d;
+}

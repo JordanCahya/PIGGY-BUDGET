@@ -22,6 +22,12 @@ import {
   findPendingRecurringBills,
   getDueRecurringAlerts,
   generateWrappedData,
+  calculateJarProgress,
+  calculateJarPace,
+  calculateCategoryCap,
+  calculateCompoundGrowth,
+  generateExpensesCSV,
+  generateInvestmentsCSV,
   buildReceiptPrompt,
   parseReceiptResponse,
   calc,
@@ -113,6 +119,10 @@ const state = {
   lastPaidBy: "p1",
   lastPaymentMethod: "cash",
   lastCardName: "",
+  jars: [],
+  feed: [],
+  feedOpen: true,
+  compound: { principal: 0, monthly: 500, rate: 8, years: 10 },
 };
 
 let notifiedDDayToday = false;
@@ -227,6 +237,260 @@ function checkPwaNotificationPrompt() {
     if (!dlg || dlg.open) return;
     openNotifPromptDialog();
   }, 600);
+}
+
+async function saveJars(jars) {
+  state.jars = jars;
+  localStorage.setItem("piggynest_jars", JSON.stringify(jars));
+  if (state.db?.saveSettings && state.settings) {
+    state.settings.jars = jars;
+    await state.db.saveSettings({ ...state.settings, jars });
+  }
+}
+
+async function logActivity(text, emoji = "💬") {
+  const item = {
+    id: uid(),
+    text,
+    emoji,
+    time: Date.now(),
+  };
+  state.feed = [item, ...(state.feed || [])].slice(0, 30);
+  localStorage.setItem("piggynest_activity_feed", JSON.stringify(state.feed));
+  if (state.db?.saveSettings && state.settings) {
+    state.settings.feed = state.feed;
+    await state.db.saveSettings({ ...state.settings, feed: state.feed });
+  }
+}
+
+function formatTimeAgo(timestamp) {
+  if (!timestamp) return "Recently";
+  const seconds = Math.floor((Date.now() - Number(timestamp)) / 1000);
+  if (seconds < 60) return "Just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return "Yesterday";
+  if (days < 30) return `${days}d ago`;
+  return `${Math.floor(days / 30)}mo ago`;
+}
+
+function getCapState() {
+  const { b } = budgetFor(state.year);
+  const c = calc(b);
+  return {
+    annualBudget: c.total,
+    categories: b.categories,
+    year: state.year,
+    expenses: state.expenses,
+  };
+}
+
+function updateExpenseFormCapHint() {
+  const f = $("#expForm");
+  const alertEl = $("#catCapAlert");
+  if (!f || !alertEl) return;
+  const catId = f.categoryId?.value;
+  if (!catId) {
+    alertEl.classList.add("hide");
+    return;
+  }
+  const capState = getCapState();
+  const cap = calculateCategoryCap(catId, capState, state.month);
+  if (cap.ratio >= 1.0) {
+    alertEl.className = "cat-cap-hint-box cap-danger";
+    alertEl.innerHTML = `🚨 Budget exceeded! (${fmt(cap.spent)} spent of ${fmt(cap.monthlyBudget)} monthly cap)`;
+    alertEl.classList.remove("hide");
+  } else if (cap.ratio >= 0.8) {
+    alertEl.className = "cat-cap-hint-box cap-warn";
+    alertEl.innerHTML = `⚠️ ${Math.round(cap.ratio * 100)}% of monthly budget used (${fmt(cap.spent)} / ${fmt(cap.monthlyBudget)})`;
+    alertEl.classList.remove("hide");
+  } else if (cap.ratio > 0) {
+    alertEl.className = "cat-cap-hint-box cap-ok";
+    alertEl.innerHTML = `✅ ${Math.round(cap.ratio * 100)}% of monthly budget used (${fmt(cap.spent)} / ${fmt(cap.monthlyBudget)})`;
+    alertEl.classList.remove("hide");
+  } else {
+    alertEl.classList.add("hide");
+  }
+}
+
+function downloadCsvFile(csvContent, filename) {
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+  toast(`📥 ${filename} downloaded!`);
+}
+
+function jarsSectionHtml() {
+  const jars = state.jars || [];
+  const jarsList = jars.map((jar) => {
+    const prog = calculateJarProgress(jar);
+    const pace = calculateJarPace(jar, jar.targetDate);
+    return `
+      <article class="card jar-card">
+        <div class="jar-card-head">
+          <div class="jar-badge">${esc(jar.icon || "🏺")}</div>
+          <div class="jar-info">
+            <h3 class="jar-name">${esc(jar.name)}</h3>
+            ${jar.targetDate ? `<small class="jar-target-date">📅 Target: ${esc(jar.targetDate)}</small>` : ""}
+          </div>
+          <div class="jar-card-tools">
+            <button type="button" class="icon-btn sm" data-act="edit-jar" data-id="${esc(jar.id)}" title="Edit jar">✏️</button>
+            <button type="button" class="icon-btn sm" data-act="del-jar" data-id="${esc(jar.id)}" title="Delete jar">🗑️</button>
+          </div>
+        </div>
+        <div class="jar-amounts">
+          <span class="jar-saved"><b>${fmt(prog.current)}</b> saved</span>
+          <small class="jar-target">of ${fmt(prog.target)} target</small>
+          <span class="chip ${prog.isCompleted ? "gain-pos" : ""}">${Math.round(prog.percentage)}%</span>
+        </div>
+        <div class="meter"><i class="${prog.isCompleted ? "goal-done" : ""}" style="width:${prog.percentage}%"></i></div>
+        <div class="jar-footer">
+          <small class="jar-pace ${prog.isCompleted ? "pos" : ""}">${prog.isCompleted ? "🎉 Goal reached!" : `${fmt(prog.remaining)} left · Need ${fmt(pace.monthlyPace)}/mo (${pace.monthsRemaining} mos)`}</small>
+        </div>
+        <div class="jar-actions">
+          <button type="button" class="btn btn-soft sm" data-act="add-jar-money" data-id="${esc(jar.id)}">➕ Add Money</button>
+          <button type="button" class="btn btn-ghost sm" data-act="withdraw-jar-money" data-id="${esc(jar.id)}">➖ Withdraw</button>
+        </div>
+      </article>`;
+  }).join("");
+
+  return `
+    <section class="card jars-section">
+      <div class="jars-head">
+        <div class="jars-title">
+          <span class="jars-icon">🏺</span>
+          <h2>Piggy Jars (Goal Buckets)</h2>
+        </div>
+        <button type="button" class="btn btn-primary sm" data-act="new-jar">＋ New Jar</button>
+      </div>
+      <p class="jars-sub">Separate sinking funds for dream vacations, car repairs, rainy days & couple goals.</p>
+      ${jars.length ? `<div class="jars-grid">${jarsList}</div>` : `<div class="empty-jars"><p>No goal jars created yet. Tap "+ New Jar" to create a bucket for vacations, gifts, or emergencies!</p></div>`}
+    </section>`;
+}
+
+function activityFeedHtml() {
+  const feed = state.feed || [];
+  const isOpen = state.feedOpen !== false;
+  return `
+    <section class="card feed-card">
+      <div class="feed-head" data-act="toggle-feed">
+        <div class="feed-title">
+          <span>💬</span>
+          <h3>Partner Activity Feed</h3>
+          <span class="chip">${feed.length} updates</span>
+        </div>
+        <span class="feed-toggle-icon">${isOpen ? "▲" : "▼"}</span>
+      </div>
+      ${isOpen ? `
+        <div class="feed-list">
+          ${feed.length ? feed.slice(0, 8).map((item) => `
+            <div class="feed-item">
+              <span class="feed-item-icon">${item.emoji || "💬"}</span>
+              <div class="feed-item-main">
+                <p>${esc(item.text)}</p>
+                <small>${formatTimeAgo(item.time)}</small>
+              </div>
+            </div>
+          `).join("") : `<small style="color:var(--ink-soft);padding:8px 0;display:block;">No activity logged yet. Add an expense or update a jar to see real-time partner activity!</small>`}
+        </div>
+      ` : ""}
+    </section>`;
+}
+
+function openJarModal(jarId = null) {
+  const jar = jarId ? (state.jars || []).find((j) => j.id === jarId) : null;
+  const dlg = $("#settingsDialog");
+  if (!dlg) return;
+  dlg.innerHTML = `
+    <div class="dlg-body">
+      <h2>${jar ? "Edit Piggy Jar" : "New Piggy Jar 🏺"}</h2>
+      <p style="color:var(--ink-soft);font-size:0.9rem;margin-top:-4px;">Create a goal bucket for a specific purchase, trip, or emergency fund.</p>
+      <form id="jarForm" data-id="${esc(jar?.id || "")}" autocomplete="off">
+        <label>Jar Name
+          <input name="name" maxlength="40" required placeholder="e.g. Bali Vacation, Car Service, Emergency Fund" value="${esc(jar?.name || "")}">
+        </label>
+        <div class="two-col-inline">
+          <label>Emoji / Icon
+            <input name="icon" maxlength="4" style="text-align:center;" value="${esc(jar?.icon || "🏺")}">
+          </label>
+          <label>Target Date <small>(optional)</small>
+            <input name="targetDate" type="date" value="${jar?.targetDate || ""}">
+          </label>
+        </div>
+        <div class="two-col-inline">
+          <label>Target Amount
+            <input name="targetAmount" type="text" inputmode="decimal" required placeholder="0" value="${jar ? formatNumberInput(jar.targetAmount) : ""}">
+          </label>
+          <label>Current Saved
+            <input name="currentAmount" type="text" inputmode="decimal" placeholder="0" value="${jar ? formatNumberInput(jar.currentAmount) : "0"}">
+          </label>
+        </div>
+        <div class="dlg-actions">
+          <button type="button" class="btn btn-ghost" data-act="close-settings">Cancel</button>
+          <button type="submit" class="btn btn-primary">${jar ? "Save Jar" : "Create Jar"}</button>
+        </div>
+      </form>
+    </div>`;
+  if (!dlg.open) dlg.showModal();
+}
+
+function openJarMoneyModal(jarId, mode = "add") {
+  const jar = (state.jars || []).find((j) => j.id === jarId);
+  if (!jar) return;
+  const dlg = $("#settingsDialog");
+  if (!dlg) return;
+  const isAdd = mode === "add";
+  dlg.innerHTML = `
+    <div class="dlg-body">
+      <h2>${isAdd ? "➕ Add Money to Jar" : "➖ Withdraw from Jar"}</h2>
+      <p style="color:var(--ink-soft);font-size:0.9rem;margin-top:-4px;">${esc(jar.icon || "🏺")} <b>${esc(jar.name)}</b> (Currently saved: <b>${fmt(jar.currentAmount || 0)}</b> of ${fmt(jar.targetAmount || 0)})</p>
+      <form id="jarMoneyForm" data-id="${esc(jar.id)}" data-mode="${mode}" autocomplete="off">
+        <label>Amount to ${isAdd ? "add" : "withdraw"}
+          <input name="amount" type="text" inputmode="decimal" required placeholder="0" autofocus>
+        </label>
+        <div class="dlg-actions">
+          <button type="button" class="btn btn-ghost" data-act="close-settings">Cancel</button>
+          <button type="submit" class="btn btn-primary">${isAdd ? "Add to Jar" : "Withdraw"}</button>
+        </div>
+      </form>
+    </div>`;
+  if (!dlg.open) dlg.showModal();
+}
+
+function openReactionPicker(expenseId) {
+  const exp = state.expenses.find((x) => x.id === expenseId);
+  if (!exp) return;
+  const emojis = ["❤️", "👏", "😂", "😱", "💸"];
+  const dlg = $("#settingsDialog");
+  if (!dlg) return;
+  const s = settings();
+  const myKey = state.lastPaidBy === "p2" ? "p2" : "p1";
+  const myName = myKey === "p2" ? s.persons[1].name : s.persons[0].name;
+  dlg.innerHTML = `
+    <div class="dlg-body" style="text-align:center;max-width:320px;">
+      <h3 style="margin:0 0 4px;">React as ${esc(myName)}</h3>
+      <p style="color:var(--ink-soft);font-size:0.85rem;margin:0 0 16px;">${esc(exp.note || "Expense")} (${fmt(exp.amount)})</p>
+      <div class="reaction-emoji-bar">
+        ${emojis.map((em) => `
+          <button type="button" class="reaction-emoji-btn ${(exp.reactions?.[myKey] === em) ? "active" : ""}" data-act="select-reaction" data-id="${esc(exp.id)}" data-emoji="${em}">
+            ${em}
+          </button>
+        `).join("")}
+      </div>
+      <div style="margin-top:16px;">
+        <button type="button" class="btn btn-ghost sm" data-act="close-settings">Close</button>
+      </div>
+    </div>`;
+  if (!dlg.open) dlg.showModal();
 }
 
 function paymentBadgeHtml(e) {
@@ -800,7 +1064,16 @@ function homeHtml() {
         <div class="cat-top">
           <div class="cat-emoji">${esc(cat.emoji)}</div>
           <div class="cat-name"><b>${esc(cat.name)}</b><small>${cat.percent}% of income</small></div>
-          <span class="chip">${Math.round(used)}%</span>
+          <div style="display:flex;align-items:center;gap:4px;">
+            ${(() => {
+              const capState = { annualBudget: c.total, categories: b.categories, year: state.year, expenses: state.expenses };
+              const cap = calculateCategoryCap(cat.id, capState, m);
+              if (cap.status === "exceeded") return `<span class="chip cat-cap-badge cap-danger">🚨 Exceeded</span>`;
+              if (cap.status === "warning") return `<span class="chip cat-cap-badge cap-warn">⚠️ ${Math.round(cap.ratio * 100)}%</span>`;
+              return "";
+            })()}
+            <span class="chip">${Math.round(used)}%</span>
+          </div>
         </div>
         <div class="meter"><i class="${usedStatus(used)}" style="width:${Math.min(used, 100)}%"></i></div>
         <div class="cat-amounts"><span><b>${fmt(sp.total)}</b> of ${fmt(cat.monthly)}</span><span class="${remaining < 0 ? "neg" : ""}">${remaining < 0 ? `${fmt(-remaining)} over` : `${fmt(remaining)} left`}</span></div>
@@ -854,6 +1127,8 @@ function homeHtml() {
     <section class="grid">${cards.join("") || `<div class="card empty">🎯<p>No categories yet. Add some in Budget.</p></div>`}</section>
     <div class="section-title"><h2>Who's paying</h2><small>Together expenses count 50:50 for each of you</small></div>
     <section class="grid-2 people">${people}</section>
+    ${jarsSectionHtml()}
+    ${activityFeedHtml()}
     <button class="fab" data-act="quick-add" aria-label="Add expense">＋</button>`;
 }
 
@@ -877,6 +1152,7 @@ function expensesHtml() {
           <label>Date<input type="date" name="date" required></label>
           <label>Amount<input type="text" name="amount" inputmode="decimal" placeholder="0" required></label>
           <label>Category<select name="categoryId" required></select></label>
+          <div id="catCapAlert" class="cat-cap-hint-box hide"></div>
           <fieldset class="who">
             <legend>Paid by</legend>
             ${PERSON_KEYS.map((k, i) => `<label class="who-pill"><input type="radio" name="paidBy" value="${k}" ${k === state.lastPaidBy ? "checked" : ""}><span>${esc(s.persons[i].emoji)} ${esc(s.persons[i].name)}</span></label>`).join("")}
@@ -971,13 +1247,23 @@ function updateExpenseList() {
         return `
         <div class="exp-row" style="--c:${esc(cat?.color || "#ddd")}">
           <div class="exp-emoji">${esc(cat?.emoji || "✨")}</div>
-          <div class="exp-main"><b>${esc(e.note || cat?.name || "Other")}</b><small>${Number(e.date.slice(8, 10))} ${MONTHS[state.month]} · ${esc(cat?.name || "Other")}</small></div>
+          <div class="exp-main">
+            <b>${esc(e.note || cat?.name || "Other")}</b>
+            <small>${Number(e.date.slice(8, 10))} ${MONTHS[state.month]} · ${esc(cat?.name || "Other")}</small>
+            ${(() => {
+              const reactions = e.reactions || {};
+              const entries = Object.entries(reactions);
+              if (!entries.length) return "";
+              return `<div class="exp-reactions">${entries.map(([k, em]) => `<span class="exp-reaction-chip" data-act="open-reactions" data-id="${esc(e.id)}" title="${k === "p1" ? s.persons[0].name : s.persons[1].name}: ${em}">${em}</span>`).join("")}</div>`;
+            })()}
+          </div>
           ${paymentBadgeHtml(e)}
           ${e.paidBy === "both"
             ? `<span class="chip who-both">💞 Together</span>`
             : `<span class="chip who-${PERSON_KEYS[pi]}">${esc(s.persons[pi].emoji)} ${esc(s.persons[pi].name)}</span>`}
           <b class="exp-amt">${fmt(e.amount)}</b>
           <div class="row-actions">
+            <button type="button" class="icon-btn sm exp-react-trigger" data-act="open-reactions" data-id="${esc(e.id)}" title="React with emoji">❤️+</button>
             <button class="icon-btn sm" data-act="edit-exp" data-id="${esc(e.id)}" aria-label="Edit expense">✏️</button>
             <button class="icon-btn sm" data-act="del-exp" data-id="${esc(e.id)}" aria-label="Delete expense">🗑️</button>
           </div>
@@ -1024,6 +1310,8 @@ async function submitExpense(form) {
   }
   const wasEditing = !!state.editingId;
   toast(wasEditing ? "Expense updated" : "Expense added");
+  const paidPerson = data.paidBy === "both" ? "Together" : (data.paidBy === "p2" ? settings().persons[1].name : settings().persons[0].name);
+  logActivity(`${paidPerson} logged "${data.note || "Expense"}" for ${fmt(data.amount)}`, "🧾");
   const y = Number(date.slice(0, 4));
   const mo = Number(date.slice(5, 7)) - 1;
   if (y !== state.year || mo !== state.month) {
@@ -1634,6 +1922,75 @@ function investCategory() {
   return cats.find((c) => c.id === stored) || cats.find((c) => /sav|invest|tabung/i.test(c.name)) || null;
 }
 
+function compoundCalcHtml(startingPrincipal = 0) {
+  const s = settings();
+  const initPrincipal = state.compound?.principal ?? startingPrincipal;
+  const initMonthly = state.compound?.monthly ?? (s.savingsGoal || 500);
+  const initRate = state.compound?.rate ?? 8;
+  const initYears = state.compound?.years ?? 10;
+  const growth = calculateCompoundGrowth(initPrincipal, initMonthly, initRate, initYears);
+  let milestone = "🌱 Compounding in Action";
+  if (growth.futureValue >= 1000000) milestone = "🎉 Millionaire Nest Projected!";
+  else if (growth.totalInterest > growth.totalContributed) milestone = "🚀 Interest Outearns Contributions!";
+  return `
+    <section class="card compound-calc-card" id="compoundCalcCard">
+      <div class="compound-calc-head">
+        <div class="compound-calc-title">
+          <span>🚀</span>
+          <h2>Future Nest Compound Calculator</h2>
+        </div>
+        <span class="chip" id="compoundMilestone">${esc(milestone)}</span>
+      </div>
+      <p class="compound-calc-desc">See how your current portfolio and regular couple contributions grow over time with compound interest.</p>
+
+      <div class="compound-hero-stat">
+        <span class="compound-hero-label">Projected Future Nest Egg</span>
+        <b class="compound-hero-num" id="compoundFutureVal">${fmt(growth.futureValue)}</b>
+        <span class="compound-hero-sub" id="compoundYearsSub">in ${initYears} years at ${initRate}% annual return</span>
+      </div>
+
+      <div class="compound-dual-breakdown">
+        <div class="compound-mini-stat">
+          <span>Total Money Contributed</span>
+          <b id="compoundContributed">${fmt(growth.totalContributed)}</b>
+        </div>
+        <div class="compound-mini-stat">
+          <span>Compound Growth Earned</span>
+          <b class="pos" id="compoundInterest">+${fmt(growth.totalInterest)}</b>
+        </div>
+      </div>
+
+      <div class="compound-controls">
+        <div class="compound-field">
+          <div class="compound-field-label">
+            <span>Timeline (Years)</span>
+            <b id="compoundYearsLabel">${initYears} years</b>
+          </div>
+          <input type="range" id="compoundYearsRange" min="1" max="30" step="1" value="${initYears}">
+          <div class="compound-quick-pills">
+            <button type="button" class="btn btn-soft btn-xs compound-year-btn ${initYears === 5 ? "active" : ""}" data-act="set-compound-years" data-years="5">5y</button>
+            <button type="button" class="btn btn-soft btn-xs compound-year-btn ${initYears === 10 ? "active" : ""}" data-act="set-compound-years" data-years="10">10y</button>
+            <button type="button" class="btn btn-soft btn-xs compound-year-btn ${initYears === 15 ? "active" : ""}" data-act="set-compound-years" data-years="15">15y</button>
+            <button type="button" class="btn btn-soft btn-xs compound-year-btn ${initYears === 20 ? "active" : ""}" data-act="set-compound-years" data-years="20">20y</button>
+            <button type="button" class="btn btn-soft btn-xs compound-year-btn ${initYears === 30 ? "active" : ""}" data-act="set-compound-years" data-years="30">30y</button>
+          </div>
+        </div>
+
+        <div class="grid-2" style="margin-top:12px;">
+          <label>Monthly Contribution
+            <input type="number" id="compoundMonthlyInput" min="0" step="10" value="${initMonthly}">
+          </label>
+          <label>Expected Return (%/year)
+            <input type="number" id="compoundRateInput" min="0" max="30" step="0.5" value="${initRate}">
+          </label>
+        </div>
+        <label style="margin-top:8px;">Starting Principal
+          <input type="number" id="compoundPrincipalInput" min="0" step="100" value="${Math.round(initPrincipal)}">
+        </label>
+      </div>
+    </section>`;
+}
+
 function investHtml() {
   const s = settings();
   const header = `<div class="section-title"><h2>Investments 📈</h2><button class="btn btn-primary" data-act="inv-new">＋ Add investment</button></div>`;
@@ -1642,7 +1999,8 @@ function investHtml() {
       <section class="card"><div class="empty">🌱
         <p>No investments yet.<br>Track gold, stocks, funds, deposits and more, and watch your savings grow together.</p>
         <div><button class="btn btn-primary" data-act="inv-new">Add your first investment</button></div>
-      </div></section>`;
+      </div></section>
+      ${compoundCalcHtml(0)}`;
   }
 
   const P = portfolio();
@@ -1763,7 +2121,8 @@ function investHtml() {
       <div class="chart"><div class="chart-plot">${bars}</div><div class="chart-labels">${labels}</div></div>
     </section>
     <div class="section-title"><h2>Holdings</h2><small>Update the value now and then to track growth</small></div>
-    <section class="grid">${cards}</section>`;
+    <section class="grid">${cards}</section>
+    ${compoundCalcHtml(P.value)}`;
 }
 
 const needDbUpdate = () => {
@@ -2618,12 +2977,13 @@ function openSettings() {
         </div>
       </div>
       <div class="dlg-backup">
-        <small style="font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.5px;">Backup & Export</small>
+        <small style="font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.5px;">Backup & Data Export</small>
         <div class="dlg-backup-btns">
+          <button type="button" class="btn btn-soft" data-act="export-expenses-csv">📊 Download Expenses CSV</button>
+          <button type="button" class="btn btn-soft" data-act="export-investments-csv">📈 Download Investments & Portfolio CSV</button>
           <button type="button" class="btn btn-soft" data-act="export-json">💾 Backup all data (JSON)</button>
           <button type="button" class="btn btn-soft" data-act="restore-json-btn">📥 Restore from JSON</button>
           <input type="file" id="restoreJsonFile" accept=".json,application/json" class="hide">
-          <button type="button" class="btn btn-soft" data-act="export-csv">📊 Download expenses (CSV)</button>
         </div>
       </div>
       <div class="dlg-actions">
@@ -3506,6 +3866,66 @@ document.addEventListener("click", async (ev) => {
   const act = el.dataset.act;
   switch (act) {
     case "tab": setTab(el.dataset.tab); break;
+    case "new-jar": openJarModal(); break;
+    case "edit-jar": openJarModal(el.dataset.id); break;
+    case "del-jar": {
+      if (confirm("Delete this goal jar?")) {
+        const remaining = (state.jars || []).filter((j) => j.id !== el.dataset.id);
+        await saveJars(remaining);
+        toast("Jar deleted");
+        renderView();
+      }
+      break;
+    }
+    case "add-jar-money": openJarMoneyModal(el.dataset.id, "add"); break;
+    case "withdraw-jar-money": openJarMoneyModal(el.dataset.id, "withdraw"); break;
+    case "toggle-feed": {
+      state.feedOpen = !state.feedOpen;
+      renderView();
+      break;
+    }
+    case "open-reactions": openReactionPicker(el.dataset.id); break;
+    case "select-reaction": {
+      const expId = el.dataset.id;
+      const emoji = el.dataset.emoji;
+      const exp = state.expenses.find((x) => x.id === expId);
+      if (exp) {
+        exp.reactions = exp.reactions || {};
+        const myKey = state.lastPaidBy === "p2" ? "p2" : "p1";
+        const myName = myKey === "p2" ? settings().persons[1].name : settings().persons[0].name;
+        if (exp.reactions[myKey] === emoji) {
+          delete exp.reactions[myKey];
+        } else {
+          exp.reactions[myKey] = emoji;
+          logActivity(`${myName} reacted ${emoji} to "${exp.note || "Expense"}" (${fmt(exp.amount)})`, emoji);
+        }
+        await state.db.updateExpense(exp.id, { reactions: exp.reactions });
+        $("#settingsDialog")?.close();
+        renderView();
+      }
+      break;
+    }
+    case "set-compound-years": {
+      const y = Number(el.dataset.years) || 10;
+      state.compound = state.compound || {};
+      state.compound.years = y;
+      const range = $("#compoundYearsRange");
+      if (range) range.value = y;
+      updateCompoundDisplay();
+      break;
+    }
+    case "export-expenses-csv": {
+      const csv = generateExpensesCSV(state.expenses);
+      const safeFamily = (settings().familyName || "PiggyNest").replace(/[^a-zA-Z0-9_-]/g, "_");
+      downloadCsvFile(csv, `${safeFamily}-Expenses.csv`);
+      break;
+    }
+    case "export-investments-csv": {
+      const csv = generateInvestmentsCSV(state.investments);
+      const safeFamily = (settings().familyName || "PiggyNest").replace(/[^a-zA-Z0-9_-]/g, "_");
+      downloadCsvFile(csv, `${safeFamily}-Investments.csv`);
+      break;
+    }
     case "open-wrapped": openWrappedStory(); break;
     case "close-wrapped": closeWrappedStory(); break;
     case "close-story-preview": $("#storyPreviewModal")?.remove(); break;
@@ -3736,11 +4156,59 @@ document.addEventListener("change", (ev) => {
     if (cc) cc.classList.toggle("hide", val === "cash");
     if (inst) inst.classList.toggle("hide", val !== "installment");
   }
+  if (ev.target.name === "categoryId" && ev.target.form?.id === "expForm") {
+    updateExpenseFormCapHint();
+  }
 });
 
 document.addEventListener("submit", (ev) => {
   ev.preventDefault();
   if (ev.target.id === "savingsGoalForm") submitSavingsGoal(ev.target);
+  if (ev.target.id === "jarForm") {
+    const form = ev.target;
+    const fd = new FormData(form);
+    const id = form.dataset.id || uid();
+    const name = String(fd.get("name") || "").trim();
+    if (!name) { toast("Please give your jar a name"); return; }
+    const icon = String(fd.get("icon") || "🏺").trim() || "🏺";
+    const targetAmount = parseFormattedNumber(fd.get("targetAmount"));
+    const currentAmount = parseFormattedNumber(fd.get("currentAmount"));
+    const targetDate = String(fd.get("targetDate") || "");
+    const existing = state.jars || [];
+    const isEdit = existing.some((j) => j.id === id);
+    let nextJars;
+    if (isEdit) {
+      nextJars = existing.map((j) => j.id === id ? { ...j, name, icon, targetAmount, currentAmount, targetDate } : j);
+    } else {
+      nextJars = [...existing, { id, name, icon, targetAmount, currentAmount, targetDate }];
+    }
+    saveJars(nextJars);
+    logActivity(`${isEdit ? "Updated" : "Created"} jar 🏺 "${name}" (${fmt(targetAmount)} goal)`, icon);
+    $("#settingsDialog")?.close();
+    renderView();
+    toast(`Jar "${name}" saved! 🏺`);
+    return;
+  }
+  if (ev.target.id === "jarMoneyForm") {
+    const form = ev.target;
+    const fd = new FormData(form);
+    const id = form.dataset.id;
+    const mode = form.dataset.mode || "add";
+    const amount = parseFormattedNumber(fd.get("amount"));
+    if (amount <= 0) { toast("Please enter a valid amount"); return; }
+    const existing = state.jars || [];
+    const jar = existing.find((j) => j.id === id);
+    if (!jar) return;
+    const isWithdraw = mode === "withdraw";
+    const newAmount = isWithdraw ? Math.max(0, (jar.currentAmount || 0) - amount) : (jar.currentAmount || 0) + amount;
+    const nextJars = existing.map((j) => j.id === id ? { ...j, currentAmount: newAmount } : j);
+    saveJars(nextJars);
+    logActivity(`${isWithdraw ? "Withdrew" : "Added"} ${fmt(amount)} ${isWithdraw ? "from" : "to"} jar ${jar.icon || "🏺"} "${jar.name}"`, isWithdraw ? "💸" : "💰");
+    $("#settingsDialog")?.close();
+    renderView();
+    toast(`${isWithdraw ? "Withdrew" : "Added"} ${fmt(amount)}!`);
+    return;
+  }
   if (ev.target.id === "expForm") submitExpense(ev.target);
   if (ev.target.id === "authForm") doAuth("signin");
   if (ev.target.id === "invForm") submitInvForm(ev.target);
@@ -3789,6 +4257,19 @@ document.addEventListener("input", (ev) => {
   );
   if (isFormattedNumInput) {
     handleFormattedNumberInput(t);
+  }
+
+  if (t.form?.id === "expForm" && (t.name === "categoryId" || t.name === "amount")) {
+    updateExpenseFormCapHint();
+  }
+
+  if (t.id === "compoundYearsRange" || t.id === "compoundRateInput" || t.id === "compoundMonthlyInput" || t.id === "compoundPrincipalInput") {
+    state.compound = state.compound || {};
+    if (t.id === "compoundYearsRange") state.compound.years = Number(t.value) || 10;
+    if (t.id === "compoundRateInput") state.compound.rate = Number(t.value) || 8;
+    if (t.id === "compoundMonthlyInput") state.compound.monthly = parseFormattedNumber(t.value);
+    if (t.id === "compoundPrincipalInput") state.compound.principal = parseFormattedNumber(t.value);
+    updateCompoundDisplay();
   }
 
   if (state.tab !== "budget" || !$("#view")?.contains(t)) return;
@@ -3885,8 +4366,48 @@ function refreshChrome() {
   }
 }
 
+function updateCompoundDisplay() {
+  const card = $("#compoundCalcCard");
+  if (!card) return;
+  const p = state.compound?.principal || 0;
+  const m = state.compound?.monthly ?? 500;
+  const r = state.compound?.rate ?? 8;
+  const y = state.compound?.years ?? 10;
+  const growth = calculateCompoundGrowth(p, m, r, y);
+
+  const fvEl = $("#compoundFutureVal");
+  if (fvEl) fvEl.textContent = fmt(growth.futureValue);
+  const subEl = $("#compoundYearsSub");
+  if (subEl) subEl.textContent = `in ${y} years at ${r}% annual return`;
+  const contEl = $("#compoundContributed");
+  if (contEl) contEl.textContent = fmt(growth.totalContributed);
+  const intEl = $("#compoundInterest");
+  if (intEl) intEl.textContent = `+${fmt(growth.totalInterest)}`;
+  const yLabel = $("#compoundYearsLabel");
+  if (yLabel) yLabel.textContent = `${y} years`;
+
+  $$(".compound-year-btn").forEach((btn) => btn.classList.toggle("active", Number(btn.dataset.years) === y));
+
+  const msEl = $("#compoundMilestone");
+  if (msEl) {
+    if (growth.futureValue >= 1000000) msEl.textContent = "🎉 Millionaire Nest Projected!";
+    else if (growth.totalInterest > growth.totalContributed) msEl.textContent = "🚀 Interest Outearns Contributions!";
+    else msEl.textContent = "🌱 Compounding in Action";
+  }
+}
+
 function onData() {
   if (!state.user || !ready()) return;
+  if (state.settings?.jars) {
+    state.jars = state.settings.jars;
+  } else if (!state.jars.length) {
+    state.jars = JSON.parse(localStorage.getItem("piggynest_jars") || "[]");
+  }
+  if (state.settings?.feed) {
+    state.feed = state.settings.feed;
+  } else if (!state.feed.length) {
+    state.feed = JSON.parse(localStorage.getItem("piggynest_activity_feed") || "[]");
+  }
   checkDDayNotifications();
   checkPwaNotificationPrompt();
 

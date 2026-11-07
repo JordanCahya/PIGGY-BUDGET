@@ -835,3 +835,212 @@ export function generateWrappedData({
     investments: investmentStats,
   };
 }
+
+/* ------------------------------------------------------------------ */
+/* Phase 5 Expansion: Sinking Funds, Category Caps, Compound Growth, CSV */
+/* ------------------------------------------------------------------ */
+
+export function calculateJarProgress(jar) {
+  const current = Math.max(0, Number(jar?.current ?? jar?.currentAmount ?? jar?.saved ?? jar?.balance ?? 0) || 0);
+  const target = Math.max(0, Number(jar?.target ?? jar?.targetAmount ?? jar?.goal ?? 0) || 0);
+  const remaining = Math.max(0, target - current);
+  const rawPct = target > 0 ? (current / target) * 100 : 0;
+  const percentage = Math.min(100, Math.max(0, rawPct));
+  const isCompleted = target > 0 ? current >= target : false;
+
+  return {
+    percentage,
+    remaining,
+    isCompleted,
+    current,
+    target,
+  };
+}
+
+export function calculateJarPace(jar, targetDateStr, fromDate = new Date()) {
+  const { remaining } = calculateJarProgress(jar);
+  if (!targetDateStr) {
+    return { monthsRemaining: 1, pace: remaining, monthlyPace: remaining, remaining };
+  }
+  const target = targetDateStr instanceof Date ? targetDateStr : new Date(targetDateStr);
+  const now = fromDate instanceof Date ? fromDate : new Date(fromDate);
+
+  const yearDiff = target.getFullYear() - now.getFullYear();
+  const monthDiff = target.getMonth() - now.getMonth();
+  const totalMonths = yearDiff * 12 + monthDiff;
+  const monthsRemaining = Math.max(1, totalMonths);
+  const pace = remaining / monthsRemaining;
+
+  return {
+    monthsRemaining,
+    pace,
+    monthlyPace: pace,
+    remaining,
+  };
+}
+
+export function calculateCategoryCap(categoryKey, state = {}, monthIndex = new Date().getMonth()) {
+  let annualBudget = Number(state?.annualBudget ?? state?.totalBudget ?? 0);
+  if (!annualBudget && state?.budget) {
+    annualBudget = Number(state.budget.income?.p1 || 0) + Number(state.budget.income?.p2 || 0);
+  }
+
+  let category = null;
+  if (state?.categories) {
+    if (Array.isArray(state.categories)) {
+      category = state.categories.find(
+        (c) => String(c.id) === String(categoryKey) || String(c.name).toLowerCase() === String(categoryKey).toLowerCase()
+      );
+    } else if (typeof state.categories === "object") {
+      category = state.categories[categoryKey];
+    }
+  }
+
+  const catPercentage = Number(category?.percentage ?? category?.percent ?? 0);
+  const monthlyBudget = annualBudget > 0 ? (annualBudget * (catPercentage / 100)) / 12 : 0;
+
+  const mIdx = typeof monthIndex === "number" ? monthIndex : new Date().getMonth();
+  const currentYear = state?.year ?? new Date().getFullYear();
+
+  let spent = 0;
+  for (const e of state?.expenses || []) {
+    if (!e) continue;
+    const eCat = String(e.categoryId ?? e.category ?? e.categoryKey ?? "");
+    const eCatName = String(e.name ?? e.categoryName ?? "");
+    const isMatch =
+      eCat === String(categoryKey) ||
+      (category && eCat === String(category.id)) ||
+      (category && eCatName === String(category.name));
+    if (!isMatch) continue;
+
+    if (e.date && typeof e.date === "string") {
+      const parts = e.date.split("-");
+      const eMonth = Number(parts[1]) - 1;
+      const eYear = Number(parts[0]);
+      if (eMonth === mIdx && (!eYear || eYear === currentYear)) {
+        spent += Math.max(0, Number(e.amount) || 0);
+      }
+    } else {
+      spent += Math.max(0, Number(e.amount) || 0);
+    }
+  }
+
+  const ratio = monthlyBudget > 0 ? spent / monthlyBudget : (spent > 0 ? 1.0 : 0);
+  const status = ratio >= 1.0 ? "exceeded" : ratio >= 0.8 ? "warning" : "ok";
+
+  return {
+    monthlyBudget,
+    spent,
+    ratio,
+    status,
+  };
+}
+
+export function calculateCompoundGrowth(
+  startingPrincipal = 0,
+  monthlyContribution = 0,
+  annualRatePercent = 0,
+  years = 1
+) {
+  const p = Math.max(0, Number(startingPrincipal) || 0);
+  const pmt = Math.max(0, Number(monthlyContribution) || 0);
+  const rate = Number(annualRatePercent) || 0;
+  const y = Math.max(0, Number(years) || 0);
+
+  const r = rate / 100;
+  const totalMonths = y * 12;
+  const r_monthly = r / 12;
+
+  const fvPrincipal = p * Math.pow(1 + r_monthly, totalMonths);
+  const fvContributions =
+    r_monthly > 0
+      ? pmt * ((Math.pow(1 + r_monthly, totalMonths) - 1) / r_monthly)
+      : pmt * totalMonths;
+
+  const futureValue = fvPrincipal + fvContributions;
+  const totalContributed = p + (pmt * totalMonths);
+  const totalInterest = futureValue - totalContributed;
+
+  return {
+    futureValue: Math.round(futureValue),
+    totalContributed: Math.round(totalContributed),
+    totalInterest: Math.round(totalInterest),
+  };
+}
+
+function escapeCsvCell(val) {
+  if (val === null || val === undefined) return "";
+  const str = String(val);
+  if (str.includes(",") || str.includes('"') || str.includes("\n") || str.includes("\r")) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
+}
+
+export function generateExpensesCSV(expenses = []) {
+  const header = "Date,Category,Description,Paid By,Split,Amount\r\n";
+  const rows = (Array.isArray(expenses) ? expenses : []).map((e) => {
+    const date = escapeCsvCell(e?.date || "");
+    const category = escapeCsvCell(e?.category || e?.categoryName || e?.categoryId || "");
+    const description = escapeCsvCell(e?.description || e?.note || e?.title || e?.name || "");
+    const paidBy = escapeCsvCell(e?.paidBy || "p1");
+    const split = escapeCsvCell(e?.split || (e?.paidBy === "both" ? "50/50" : "100/0"));
+    const amount = escapeCsvCell(Number(e?.amount) || 0);
+    return `${date},${category},${description},${paidBy},${split},${amount}`;
+  });
+  return "\uFEFF" + header + (rows.length > 0 ? rows.join("\r\n") + "\r\n" : "");
+}
+
+export function generateInvestmentsCSV(investments = []) {
+  const header = "Asset Name,Category,Money Put In,Worth Right Now,Profit Loss,ROI %\r\n";
+  const rows = (Array.isArray(investments) ? investments : []).map((inv) => {
+    const name = escapeCsvCell(inv?.name || inv?.assetName || "Untitled");
+    const category = escapeCsvCell(inv?.type || inv?.category || "stocks");
+
+    let put = 0;
+    let value = 0;
+    let gain = 0;
+
+    if (Array.isArray(inv?.entries) && inv.entries.length > 0) {
+      let flowSeen = false;
+      const sortedEntries = [...inv.entries].sort((a, b) =>
+        (a.date || "").localeCompare(b.date || "") || (a.kind === "add" ? -1 : 1)
+      );
+      for (const e of sortedEntries) {
+        const a = Math.max(0, Number(e.amount) || 0);
+        if (e.kind === "add") {
+          value += a;
+          put += a;
+          flowSeen = true;
+        } else if (e.kind === "withdraw") {
+          value -= a;
+          flowSeen = true;
+        } else if (e.kind === "value") {
+          if (!flowSeen) {
+            put += a;
+            flowSeen = true;
+          }
+          value = a;
+        }
+      }
+      gain = value - put;
+    } else {
+      put = Math.max(0, Number(inv?.totalInvested ?? inv?.invested ?? inv?.put ?? inv?.amount ?? 0));
+      value = Math.max(0, Number(inv?.portfolioValue ?? inv?.value ?? inv?.currentValue ?? put));
+      gain = Number(inv?.totalGain ?? inv?.gain ?? (value - put));
+    }
+
+    const roi = put > 0 ? `${((gain / put) * 100).toFixed(2)}%` : "0.00%";
+
+    return [
+      name,
+      category,
+      escapeCsvCell(put),
+      escapeCsvCell(value),
+      escapeCsvCell(gain),
+      escapeCsvCell(roi),
+    ].join(",");
+  });
+
+  return "\uFEFF" + header + (rows.length > 0 ? rows.join("\r\n") + "\r\n" : "");
+}
