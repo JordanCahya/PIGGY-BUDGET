@@ -41,19 +41,26 @@ export function isAdmin(user) {
 
 export function isPro(settings, user = null) {
   if (isAdmin(user)) return true;
-  if (settings?.pro === true) return true;
-  if (settings?.proUntil && new Date(settings.proUntil) > new Date()) return true;
+  if (!settings || typeof settings !== "object") return false;
+  if (settings.pro === true || settings.isPro === true) return true;
+  if (settings.proUntil) {
+    const untilDate = settings.proUntil instanceof Date ? settings.proUntil : new Date(settings.proUntil);
+    if (!isNaN(untilDate.getTime()) && untilDate.getTime() > Date.now()) {
+      return true;
+    }
+  }
   return false;
 }
 
 export function getProRemainingDays(settings) {
   if (!settings || typeof settings !== "object") return 0;
+  const isLifetime = settings.pro === true || settings.isPro === true;
   if (!settings.proUntil) {
-    return settings.pro === true ? null : 0;
+    return isLifetime ? null : 0;
   }
   const until = new Date(settings.proUntil);
   if (isNaN(until.getTime())) {
-    return settings.pro === true ? null : 0;
+    return isLifetime ? null : 0;
   }
   const now = new Date();
   const diffMs = until.getTime() - now.getTime();
@@ -1060,13 +1067,9 @@ export const PRO_FEATURES = {
 
 export function isProUser(state) {
   if (!state || typeof state !== "object") return false;
-  if (state.isPro === true || state.pro === true) return true;
-  const s = state.settings || state;
-  if (s && (s.isPro === true || s.pro === true)) return true;
-  if (typeof isPro === "function") {
-    return isPro(state.settings || state, state.user || null);
-  }
-  return false;
+  const s = state.settings && typeof state.settings === "object" ? state.settings : state;
+  const u = state.user || null;
+  return isPro(s, u);
 }
 
 export function canAccessProFeature(featureKey, state) {

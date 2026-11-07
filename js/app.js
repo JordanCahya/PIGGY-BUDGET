@@ -3096,12 +3096,9 @@ function openSettings() {
             <b>Piggy Pro Membership</b>
             <span class="chip ${isPro(s, state.user) ? "chip-pro-active" : "chip-pro-free"}">${isPro(s, state.user) ? "PRO ACTIVE" : "FREE MODE"}</span>
           </div>
-          <button type="button" class="btn btn-soft sm" data-act="open-pro">${isPro(s, state.user) ? "Manage Subscription" : "✨ Upgrade"}</button>
+          <button type="button" class="btn btn-soft sm" data-act="open-pro">${isPro(s, state.user) ? "Manage Subscription" : "✨ Subscribe on PayPal"}</button>
         </div>
-        <small style="color:var(--ink-soft);display:block;margin:6px 0 8px;">${isPro(s, state.user) ? "All 5 Phase 5 expansion superpowers are unlocked on your nest." : "Upgrade to unlock Piggy Jars, Partner Reactions, Cap Alerts, CSV Export, and Compound Projector."}</small>
-        <div>
-          <button type="button" class="btn btn-ghost sm" data-act="toggle-pro-demo">${isPro(s, state.user) ? "Switch to Free Mode (Testing)" : "⚡ Instant Demo Pro"}</button>
-        </div>
+        <small style="color:var(--ink-soft);display:block;margin:6px 0 0;">${isPro(s, state.user) ? (s.subscriptionId ? `Subscribed via PayPal (${esc(s.subscriptionId)}). All 5 Phase 5 superpowers unlocked!` : "All 5 Phase 5 superpowers are unlocked on your nest.") : `Subscribe with PayPal (${esc(PRO_PRICE)}) to unlock Piggy Jars, Partner Reactions, Cap Alerts, CSV Export, and Compound Projector.`}</small>
       </div>
       <div class="dlg-backup">
         <small style="font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.5px;">Backup & Data Export</small>
@@ -3619,7 +3616,7 @@ function loadPayPalSdk(callback) {
     console.error("PayPal SDK failed to load");
     const container = $("#paypal-button-container");
     if (container) {
-      container.innerHTML = `<p style="color:var(--ink-soft);font-size:0.85rem;margin:4px 0;">PayPal checkout is offline. You can still use an activation code or free trial below.</p>`;
+      container.innerHTML = `<p style="color:var(--ink-soft);font-size:0.85rem;margin:4px 0;">Unable to connect to PayPal. Please check your connection and try again.</p>`;
     }
   };
   document.head.appendChild(script);
@@ -3632,8 +3629,8 @@ function renderPayPalButtons(dlg) {
   try {
     window.paypal.Buttons({
       style: {
-        shape: "rect",
-        color: "silver",
+        shape: "pill",
+        color: "gold",
         layout: "vertical",
         label: "subscribe"
       },
@@ -3687,7 +3684,7 @@ function openProDialog() {
     if (s.subscriptionId) {
       statusSection = `
         <div class="pro-active-box">
-          <b>Active Subscription</b>
+          <b>Active PayPal Subscription</b>
           <p>Plan: ${esc(PRO_PRICE)}<br>Subscription ID: <code>${esc(s.subscriptionId)}</code></p>
         </div>
         <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:6px;">
@@ -3697,11 +3694,11 @@ function openProDialog() {
     } else if (days !== null) {
       statusSection = `
         <div class="pro-active-box">
-          <b>Pro Trial Active</b>
+          <b>Pro Active</b>
           <p>${days} day${days === 1 ? "" : "s"} remaining</p>
         </div>
         <div style="margin-top:6px;">
-          <button type="button" class="btn btn-soft" data-act="cancel-pro-sub">Cancel trial</button>
+          <button type="button" class="btn btn-soft" data-act="cancel-pro-sub">Cancel Pro</button>
         </div>`;
     } else {
       statusSection = `
@@ -3713,10 +3710,10 @@ function openProDialog() {
   } else {
     statusSection = `
       <div class="pro-cta-section">
-        <div class="pro-trial-tag">✨ Includes 30-Day Free Trial ($0.00 today, then ${esc(PRO_PRICE)})</div>
         <div id="paypal-button-container" class="paypal-container">
           <span class="paypal-loading">Loading PayPal checkout…</span>
         </div>
+        <small style="color:var(--ink-soft);font-size:0.82rem;display:block;margin-top:6px;">Subscribe securely via PayPal (${esc(PRO_PRICE)} · Cancel anytime)</small>
       </div>`;
   }
 
@@ -3724,36 +3721,15 @@ function openProDialog() {
     <div class="dlg-body pro-dlg">
       <div class="pro-hero">
         <div class="pro-icon-sparkle">${adminUser ? "👑" : "💎"}</div>
-        <h2>${adminUser ? "PiggyNest Admin" : (proActive ? "PiggyNest Pro Active" : "PiggyNest Pro")}</h2>
-        <p class="pro-tagline">${adminUser ? "Full admin privileges and unlimited Pro access." : (proActive ? "Thank you for supporting PiggyNest!" : "Cozy, effortless budgeting designed for couples.")}</p>
+        <h2>${adminUser ? "PiggyNest Admin" : (proActive ? "PiggyNest Pro Active" : "Unlock Piggy Pro ✨")}</h2>
+        <p class="pro-tagline">${adminUser ? "Full admin privileges and unlimited Pro access." : (proActive ? "Thank you for supporting PiggyNest!" : "Elevate your couple financial journey with superpowers designed for two.")}</p>
         ${!adminUser ? `
         <div class="pro-price-badge">
           <span class="pro-price">${esc(PRO_PRICE)}</span>
         </div>` : ""}
       </div>
 
-      ${!proActive && !adminUser ? `
-      <div class="pro-tier-selector">
-        <button type="button" class="pro-tier-btn active" data-act="select-pro-plan" data-plan="annual">
-          <span class="pro-tier-tag">Save 30%</span>
-          <b>Annual Plan</b>
-          <span>$24.99 / yr</span>
-          <small>~$2.08 / month</small>
-        </button>
-        <button type="button" class="pro-tier-btn" data-act="select-pro-plan" data-plan="monthly">
-          <b>Monthly Plan</b>
-          <span>$2.99 / mo</span>
-          <small>Cancel anytime</small>
-        </button>
-      </div>
-      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;">
-        <button type="button" class="btn btn-primary btn-block pro-upgrade-btn" data-act="activate-pro-trial" style="padding:12px 18px;font-size:1.05rem;">
-          ✨ Start 7-Day Free Trial ($0 today)
-        </button>
-        <button type="button" class="btn btn-soft btn-block" data-act="activate-pro-demo">
-          ⚡ Instant Demo Unlock (Full Pro)
-        </button>
-      </div>` : ""}
+      ${statusSection}
 
       <div class="pro-features-list">
         <div class="pro-feature-item">
@@ -3806,8 +3782,6 @@ function openProDialog() {
           </div>
         </div>
       </div>
-
-      ${statusSection}
 
       <div class="pro-code-section">
         <small class="pro-code-label">Have an activation or promo code?</small>
@@ -4121,59 +4095,6 @@ document.addEventListener("click", async (ev) => {
       const csv = generateInvestmentsCSV(state.investments);
       const safeFamily = (settings().familyName || "PiggyNest").replace(/[^a-zA-Z0-9_-]/g, "_");
       downloadCsvFile(csv, `${safeFamily}-Investments.csv`);
-      break;
-    }
-    case "select-pro-plan": {
-      const plan = el.dataset.plan;
-      $$(".pro-tier-btn").forEach((btn) => btn.classList.toggle("active", btn.dataset.plan === plan));
-      break;
-    }
-    case "activate-pro-trial": {
-      const until = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-      await state.db.saveProStatus(true, until, null, true);
-      if (state.settings) {
-        state.settings.pro = true;
-        state.settings.proUntil = until;
-      }
-      $("#settingsDialog")?.close();
-      triggerConfetti();
-      toast("🎉 Welcome to Piggy Pro! 7-day free trial activated ✨");
-      render();
-      break;
-    }
-    case "activate-pro-demo": {
-      await state.db.saveProStatus(true, null, null, false);
-      if (state.settings) {
-        state.settings.pro = true;
-        state.settings.proUntil = null;
-      }
-      $("#settingsDialog")?.close();
-      triggerConfetti();
-      toast("👑 Piggy Pro Lifetime activated! All features unlocked ✨");
-      render();
-      break;
-    }
-    case "toggle-pro-demo": {
-      const currentlyPro = isPro(settings(), state.user);
-      if (currentlyPro) {
-        await state.db.cancelProSubscription();
-        if (state.settings) {
-          state.settings.pro = false;
-          state.settings.proUntil = null;
-          state.settings.subscriptionId = null;
-        }
-        toast("Piggy Pro disabled (Free Mode)");
-      } else {
-        await state.db.saveProStatus(true, null, null, false);
-        if (state.settings) {
-          state.settings.pro = true;
-          state.settings.proUntil = null;
-        }
-        triggerConfetti();
-        toast("🎉 Piggy Pro activated! ✨");
-      }
-      render();
-      if ($("#settingsDialog")?.open) openSettings();
       break;
     }
     case "open-wrapped": openWrappedStory(); break;

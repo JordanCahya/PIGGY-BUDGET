@@ -3109,67 +3109,6 @@ body { background: var(--bg); background-attachment: scroll; }
   font-size: 0.8rem;
 }
 
-/* Plan selector in Pro Modal */
-.pro-tier-selector {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin: 12px 0;
-}
-
-.pro-tier-btn {
-  background: var(--bg);
-  border: 2px solid var(--line);
-  border-radius: var(--radius);
-  padding: 12px 8px;
-  text-align: center;
-  cursor: pointer;
-  position: relative;
-  transition: all 0.15s ease;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-}
-
-.pro-tier-btn:hover {
-  border-color: var(--pink-soft);
-}
-
-.pro-tier-btn.active {
-  border-color: var(--pink);
-  background: linear-gradient(135deg, rgba(255, 240, 245, 0.5) 0%, rgba(255, 252, 240, 0.6) 100%);
-  box-shadow: 0 4px 14px rgba(255, 143, 177, 0.2);
-}
-
-.pro-tier-btn b {
-  font-size: 0.98rem;
-  color: var(--ink);
-}
-
-.pro-tier-btn span {
-  font-size: 1.15rem;
-  font-weight: 800;
-  color: var(--pink-deep);
-}
-
-.pro-tier-btn small {
-  font-size: 0.75rem;
-  color: var(--ink-soft);
-}
-
-.pro-tier-tag {
-  position: absolute;
-  top: -9px;
-  background: linear-gradient(135deg, #ffd700 0%, #ff8fb1 100%);
-  color: #522700;
-  font-weight: 800;
-  font-size: 0.65rem;
-  padding: 2px 8px;
-  border-radius: 999px;
-  letter-spacing: 0.4px;
-}
-
 /* Settings Pro Box */
 .dlg-pro-box {
   background: linear-gradient(135deg, rgba(255, 245, 248, 0.7) 0%, rgba(255, 252, 245, 0.8) 100%);
