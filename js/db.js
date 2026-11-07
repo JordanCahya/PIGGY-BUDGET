@@ -139,7 +139,7 @@ async function createFirebaseDb() {
       };
     },
 
-    saveSettings: (s) => fs.setDoc(settingsRef(), s, { merge: true }),
+    saveSettings: (s) => fs.setDoc(settingsRef(), { ...(s || {}) }, { merge: true }),
     saveSavingsGoal: (amount) => fs.setDoc(settingsRef(), { savingsGoal: Number(amount) || 0 }, { merge: true }),
     saveTheme: (theme) => fs.setDoc(settingsRef(), { theme: String(theme || "default") }, { merge: true }),
     saveMascot: (mascot) => fs.setDoc(settingsRef(), { mascot: String(mascot || "piggy") }, { merge: true }),

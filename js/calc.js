@@ -29,6 +29,7 @@ export const PAYPAL_PLAN_ID = "P-0TR67131SL0448510NLVTYGI";
 export const PAYPAL_CLIENT_ID = "BAAHSPhp62grKR7PYtxRFB1-GtBotGFDT3_LbQ-eKExdQNvLDyAkpDmY9_WQHethJN7amo5N7arDDoaYRY";
 
 export const ADMIN_EMAILS = [
+  "bechen200197@gmail.com",
   "jordancahya1@gmail.com",
   "jordancahya@gmail.com",
 ];
