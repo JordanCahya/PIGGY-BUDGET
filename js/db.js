@@ -20,18 +20,8 @@ function evaluateProCode(rawCode) {
   const code = String(rawCode || "").trim().toUpperCase();
   if (!code) return { valid: false, message: "Please enter an activation code." };
 
-  // Secure Admin Master & VIP Codes (Lifetime Pro with zero payment)
-  const masterVipCodes = [
-    "JORDANVIP",
-    "PIGGYADMIN",
-    "COZYADMIN",
-    "PIGGYPRO",
-    "COZYPRO",
-    "PRO2026",
-    "LIFETIME",
-    "VIPPRO",
-  ];
-  if (masterVipCodes.includes(code) || code.startsWith("PRO-ADMIN-")) {
+  const masterVipCodes = [];
+  if (masterVipCodes.includes(code)) {
     return {
       valid: true,
       isPro: true,
@@ -40,7 +30,7 @@ function evaluateProCode(rawCode) {
     };
   }
 
-  return { valid: false, message: "Invalid activation code. Subscribe via PayPal to get your 30-day $0 trial!" };
+  return { valid: false, message: "Invalid activation code." };
 }
 
 function sanitizeExpense(e) {

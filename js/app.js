@@ -3796,7 +3796,7 @@ function openProDialog() {
       <div class="pro-code-section">
         <small class="pro-code-label">Have an activation or promo code?</small>
         <form id="proCodeForm" class="pro-code-form" autocomplete="off">
-          <input type="text" id="proCodeInput" placeholder="Enter code (e.g. LIFETIME, MOCHI)" maxlength="30">
+          <input type="text" id="proCodeInput" placeholder="Enter activation code" maxlength="30">
           <button type="submit" class="btn btn-soft sm" id="btnActivateProCode">Activate</button>
         </form>
       </div>
