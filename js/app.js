@@ -3634,6 +3634,12 @@ function renderPayPalButtons(dlg) {
         layout: "vertical",
         label: "subscribe"
       },
+      onClick: function(data, actions) {
+        // Automatically minimize/close modal so user seamlessly sees PayPal popup/window
+        if (dlg && dlg.open) dlg.close();
+        toast("Opening PayPal Checkout… 💳");
+        return actions ? actions.resolve() : true;
+      },
       createSubscription: function(data, actions) {
         return actions.subscription.create({
           plan_id: PAYPAL_PLAN_ID
@@ -3648,13 +3654,17 @@ function renderPayPalButtons(dlg) {
             state.settings.subscriptionId = data.subscriptionID;
             state.settings.trialUsed = true;
           }
-          toast("💎 Welcome to PiggyNest Pro! Your 30-day trial has begun.");
-          dlg.close();
+          if (dlg && dlg.open) dlg.close();
+          triggerConfetti();
+          toast("✨ Welcome to Piggy Pro! Your subscription is active.");
           render();
         } catch (err) {
           console.error("Error saving Pro status:", err);
           toast("Subscribed on PayPal! Error saving local state: " + err.message);
         }
+      },
+      onCancel: function(data) {
+        toast("PayPal checkout cancelled");
       },
       onError: function(err) {
         console.error("PayPal Error:", err);
