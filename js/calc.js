@@ -1082,3 +1082,265 @@ export function canAccessProFeature(featureKey, state) {
       : null;
   return isProUser(targetState);
 }
+
+/* ------------------------------------------------------------------ */
+/* Phase 6: Polish & Power Update (Settlement, Converter, Filter, Rollover) */
+/* ------------------------------------------------------------------ */
+
+export function calculateMonthlySettlement(expenses = [], state = {}, monthIndex = null) {
+  // Determine year and filter by month if provided
+  const targetYear = state?.year ?? new Date().getFullYear();
+  const safeExpenses = Array.isArray(expenses) ? expenses : [];
+
+  const filteredExpenses = safeExpenses.filter((e) => {
+    if (!e || typeof e !== "object") return false;
+    if (e.date && typeof e.date === "string") {
+      const parts = e.date.split("-");
+      if (parts.length >= 2) {
+        const eYear = Number(parts[0]);
+        const eMonth = Number(parts[1]) - 1;
+        if (state?.year && eYear !== targetYear) return false;
+        if (monthIndex !== null && monthIndex !== undefined && eMonth !== Number(monthIndex)) {
+          return false;
+        }
+      }
+    }
+    return true;
+  });
+
+  // Calculate income ratios (r1 and r2)
+  let inc1 = 0;
+  let inc2 = 0;
+  if (state?.budget?.income) {
+    inc1 = Number(state.budget.income.p1) || 0;
+    inc2 = Number(state.budget.income.p2) || 0;
+  } else if (state?.income) {
+    inc1 = Number(state.income.p1) || 0;
+    inc2 = Number(state.income.p2) || 0;
+  } else if (state?.settings?.income) {
+    inc1 = Number(state.settings.income.p1) || 0;
+    inc2 = Number(state.settings.income.p2) || 0;
+  }
+  const totalIncome = inc1 + inc2;
+  const p1Ratio = totalIncome > 0 ? inc1 / totalIncome : 0.5;
+  const p2Ratio = 1 - p1Ratio;
+
+  let p1TotalPaid = 0;
+  let p2TotalPaid = 0;
+  let p1OwesP2 = 0;
+  let p2OwesP1 = 0;
+
+  for (const exp of filteredExpenses) {
+    const amount = Math.max(0, Number(exp.amount) || 0);
+    const paidBy = exp.paidBy || "p1";
+    const split = exp.split || "fair";
+
+    if (paidBy === "p1") {
+      p1TotalPaid += amount;
+    } else if (paidBy === "p2") {
+      p2TotalPaid += amount;
+    }
+
+    let p1Share = 0;
+    let p2Share = 0;
+
+    if (split === "half") {
+      p1Share = amount * 0.5;
+      p2Share = amount * 0.5;
+    } else if (split === "p1") {
+      p1Share = amount;
+      p2Share = 0;
+    } else if (split === "p2") {
+      p1Share = 0;
+      p2Share = amount;
+    } else {
+      // "fair", "both", or default
+      p1Share = amount * p1Ratio;
+      p2Share = amount * p2Ratio;
+    }
+
+    if (paidBy === "p1") {
+      // p1 covered p2's share, so p2 owes p1
+      p2OwesP1 += p2Share;
+    } else if (paidBy === "p2") {
+      // p2 covered p1's share, so p1 owes p2
+      p1OwesP2 += p1Share;
+    }
+    // If paidBy === "both", paid from joint funds, no debt created
+  }
+
+  const diff = p1OwesP2 - p2OwesP1;
+  let debtor = null;
+  let creditor = null;
+  let netAmount = 0;
+
+  if (diff > 0.005) {
+    debtor = "p1";
+    creditor = "p2";
+    netAmount = Math.round(diff * 100) / 100;
+  } else if (diff < -0.005) {
+    debtor = "p2";
+    creditor = "p1";
+    netAmount = Math.round(Math.abs(diff) * 100) / 100;
+  }
+
+  // Check settled status in settings
+  const settlementKey =
+    monthIndex !== null && monthIndex !== undefined
+      ? `${targetYear}-${monthIndex}`
+      : `${targetYear}`;
+  const isSettled = Boolean(
+    state?.settings?.settlements?.[settlementKey]?.isSettled ??
+    state?.settings?.settlements?.[settlementKey] ??
+    false
+  );
+
+  return {
+    debtor,
+    creditor,
+    netAmount,
+    p1TotalPaid: Math.round(p1TotalPaid * 100) / 100,
+    p2TotalPaid: Math.round(p2TotalPaid * 100) / 100,
+    p1OwesP2: Math.round(p1OwesP2 * 100) / 100,
+    p2OwesP1: Math.round(p2OwesP1 * 100) / 100,
+    p1Ratio: Math.round(p1Ratio * 1000) / 1000,
+    p2Ratio: Math.round(p2Ratio * 1000) / 1000,
+    isSettled,
+  };
+}
+
+export const DEFAULT_EXCHANGE_RATES = {
+  USD: 1.0,
+  EUR: 0.92,
+  GBP: 0.79,
+  JPY: 154.5,
+  SGD: 1.34,
+  AUD: 1.52,
+  CAD: 1.39,
+  IDR: 15800,
+  THB: 34.5,
+  KRW: 1390,
+  MYR: 4.45,
+};
+
+export function convertCurrency(amount, fromCurrency, toCurrency = "USD", customRates = null) {
+  const amt = Number(amount) || 0;
+  const rates = { ...DEFAULT_EXCHANGE_RATES, ...(customRates || {}) };
+
+  const fromCode = String(fromCurrency || "USD").toUpperCase();
+  const toCode = String(toCurrency || "USD").toUpperCase();
+
+  const fromRate = rates[fromCode] || 1.0;
+  const toRate = rates[toCode] || 1.0;
+
+  const inUSD = amt / fromRate;
+  const converted = inUSD * toRate;
+
+  return Math.round(converted * 100) / 100;
+}
+
+export function filterExpenses(expenses = [], filters = {}) {
+  const safeExpenses = Array.isArray(expenses) ? expenses : [];
+  const query = String(filters?.query || "").trim().toLowerCase();
+  const person = filters?.person || "all";
+  const categoryId = filters?.categoryId || "all";
+  const paymentMethod = filters?.paymentMethod || "all";
+  const monthIndex = filters?.monthIndex !== undefined ? filters.monthIndex : null;
+
+  const filtered = safeExpenses.filter((e) => {
+    if (!e || typeof e !== "object") return false;
+
+    // 1. Text Query Filter
+    if (query) {
+      const searchableFields = [
+        e.description,
+        e.note,
+        e.name,
+        e.title,
+        e.cardName,
+        e.category,
+        e.categoryName,
+        e.merchant,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      if (!searchableFields.includes(query)) return false;
+    }
+
+    // 2. Person Filter ('all' | 'p1' | 'p2' | 'both')
+    if (person && person !== "all") {
+      const paidBy = e.paidBy || "p1";
+      if (paidBy !== person) return false;
+    }
+
+    // 3. Category Filter
+    if (categoryId && categoryId !== "all") {
+      const cat = String(e.categoryId ?? e.category ?? "");
+      if (cat !== String(categoryId)) return false;
+    }
+
+    // 4. Payment Method Filter ('all' | 'cash' | 'credit_card' | 'installment')
+    if (paymentMethod && paymentMethod !== "all") {
+      const pm = e.paymentMethod || "cash";
+      if (pm !== paymentMethod) return false;
+    }
+
+    // 5. Month Index Filter (0-11)
+    if (monthIndex !== null && monthIndex !== undefined && monthIndex !== "all") {
+      if (!e.date || typeof e.date !== "string") return false;
+      const parts = e.date.split("-");
+      if (parts.length < 2) return false;
+      const mi = Number(parts[1]) - 1;
+      if (mi !== Number(monthIndex)) return false;
+    }
+
+    return true;
+  });
+
+  const totalAmount = Math.round(
+    filtered.reduce((sum, e) => sum + (Math.max(0, Number(e?.amount) || 0)), 0) * 100
+  ) / 100;
+
+  return {
+    filtered,
+    totalAmount,
+    count: filtered.length,
+  };
+}
+
+export function prepareYearRollover(previousBudget = {}, previousExpenses = [], previousSettings = {}) {
+  const norm = normalizeBudget(previousBudget);
+  const calculated = calc(norm);
+  const totalBudget = calculated.total;
+
+  const totalSpent = (Array.isArray(previousExpenses) ? previousExpenses : []).reduce(
+    (sum, e) => sum + (Math.max(0, Number(e?.amount) || 0)),
+    0
+  );
+
+  const carryoverSavings = Math.max(0, Math.round((totalBudget - totalSpent) * 100) / 100);
+
+  const prevYear = Number(previousBudget?.year) || new Date().getFullYear();
+  const nextYear = prevYear + 1;
+
+  const newBudget = {
+    year: nextYear,
+    income: {
+      p1: Number(previousBudget?.income?.p1 || 0),
+      p2: Number(previousBudget?.income?.p2 || 0),
+    },
+    categories: (previousBudget?.categories || []).map((c) => ({
+      ...c,
+      id: c.id || uid(),
+    })),
+  };
+
+  return {
+    newBudget,
+    carryoverSavings,
+    totalBudget,
+    totalSpent,
+  };
+}

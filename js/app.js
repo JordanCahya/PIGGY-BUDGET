@@ -30,6 +30,11 @@ import {
   calculateCompoundGrowth,
   generateExpensesCSV,
   generateInvestmentsCSV,
+  calculateMonthlySettlement,
+  convertCurrency,
+  DEFAULT_EXCHANGE_RATES,
+  filterExpenses,
+  prepareYearRollover,
   buildReceiptPrompt,
   parseReceiptResponse,
   calc,
@@ -100,6 +105,20 @@ function toast(msg) {
 /* State + defaults                                                    */
 /* ================================================================== */
 const now = new Date();
+
+const CURRENCY_SYMBOLS = {
+  USD: "$",
+  EUR: "€",
+  GBP: "£",
+  JPY: "¥",
+  SGD: "S$",
+  AUD: "A$",
+  CAD: "C$",
+  IDR: "Rp ",
+  THB: "฿",
+  KRW: "₩",
+  MYR: "RM ",
+};
 const state = {
   db: null,
   user: null,
@@ -115,6 +134,10 @@ const state = {
   year: now.getFullYear(),
   month: now.getMonth(),
   draft: null, // { year, b } — the budget being edited
+  privacyMode: Boolean(localStorage.getItem("piggynest_privacy_mode") === "true"),
+  pinUnlocked: false,
+  expenseFilter: { query: "", person: "all", paymentMethod: "all" },
+  lastCurrency: "USD",
   dirty: false,
   editingId: null,
   lastCat: null,
@@ -288,6 +311,27 @@ function getCapState() {
     year: state.year,
     expenses: state.expenses,
   };
+}
+
+function updateCurrencyConversionHint() {
+  const form = $("#expForm");
+  const hintEl = $("#currencyConversionHint");
+  if (!form || !hintEl) return;
+  const s = settings();
+  const baseCur = s.currency || "USD";
+  const selCur = form.currency?.value || baseCur;
+  const rawAmt = parseFormattedNumber(form.amount?.value);
+
+  if (selCur === baseCur || !rawAmt || rawAmt <= 0) {
+    hintEl.classList.add("hide");
+    hintEl.innerHTML = "";
+    return;
+  }
+
+  const converted = convertCurrency(rawAmt, selCur, baseCur);
+  const rate = convertCurrency(1, baseCur, selCur);
+  hintEl.innerHTML = `<span>≈ <b>${fmt(converted)}</b></span><small>1 ${baseCur} = ${rate.toLocaleString()} ${selCur}</small>`;
+  hintEl.classList.remove("hide");
 }
 
 function updateExpenseFormCapHint() {
@@ -706,6 +750,7 @@ const TABS = [
 const ready = () => state.loaded.settings && state.loaded.budgets && state.loaded.expenses && state.loaded.recurring;
 
 function render() {
+  document.body.classList.toggle("privacy-mode", Boolean(state.privacyMode));
   const root = $("#app");
   if (!state.db) {
     const mascot = getMascot(settings().mascot);
@@ -714,6 +759,8 @@ function render() {
     root.innerHTML = authHtml();
   } else if (!ready()) {
     root.innerHTML = splash("🪙", "Counting coins…");
+  } else if (state.settings?.pin && !state.pinUnlocked) {
+    root.innerHTML = pinLockHtml();
   } else {
     root.innerHTML = shellHtml();
     renderView();
@@ -721,6 +768,22 @@ function render() {
 }
 
 const splash = (emoji, text) => `<div class="splash"><div class="big">${emoji}</div><p>${esc(text)}</p></div>`;
+
+function pinLockHtml() {
+  return `
+    <main class="auth pin-lock-screen">
+      <div class="card auth-card pin-card">
+        <div class="big">🔒</div>
+        <h2>PiggyNest Locked</h2>
+        <p>Enter your 4-digit PIN to access your family budget.</p>
+        <form id="pinUnlockForm" autocomplete="off">
+          <input type="password" id="pinInput" name="pinInput" maxlength="4" pattern="[0-9]{4}" inputmode="numeric" placeholder="••••" required autofocus style="text-align:center;font-size:2.2rem;letter-spacing:10px;width:170px;margin:14px auto 6px;display:block;">
+          <button type="submit" class="btn btn-primary btn-block">Unlock PiggyNest</button>
+        </form>
+        <p class="err" id="pinErr" role="alert"></p>
+      </div>
+    </main>`;
+}
 
 function yearOptions() {
   const years = new Set([now.getFullYear() - 2, now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1, state.year]);
@@ -760,6 +823,7 @@ function shellHtml() {
         ${proBadgeHtml(s)}
       </div>
       <div class="controls">
+        <button type="button" class="icon-btn privacy-toggle-btn" data-act="toggle-privacy" aria-label="Toggle Privacy Mode" title="${state.privacyMode ? "Privacy Mode ON (Balances hidden)" : "Privacy Mode OFF"}">${state.privacyMode ? "🙈" : "👁️"}</button>
         <select id="yearSel" aria-label="Year">${yearOptions()}</select>
         <select id="monthSel" aria-label="Month" class="${showMonth ? "" : "hide"}">
           ${MONTHS_LONG.map((m, i) => `<option value="${i}" ${i === state.month ? "selected" : ""}>${m}</option>`).join("")}
@@ -1216,10 +1280,72 @@ function homeHtml() {
     <section class="grid">${cards.join("") || `<div class="card empty">🎯<p>No categories yet. Add some in Budget.</p></div>`}</section>
     <div class="section-title"><h2>Who's paying</h2><small>Together expenses count 50:50 for each of you</small></div>
     <section class="grid-2 people">${people}</section>
+    ${settleUpHtml()}
     ${jarsSectionHtml()}
     ${activityFeedHtml()}
     <button class="fab" data-act="quick-add" aria-label="Add expense">＋</button>`;
 }
+
+function settleUpHtml() {
+  const s = settings();
+  const m = state.month;
+  const settlement = calculateMonthlySettlement(
+    state.expenses,
+    { year: state.year, budget: budgetFor(state.year).b, settings: s },
+    m
+  );
+
+  const debtorName = settlement.debtor === "p2" ? s.persons[1].name : s.persons[0].name;
+  const creditorName = settlement.creditor === "p2" ? s.persons[1].name : s.persons[0].name;
+  const debtorEmoji = settlement.debtor === "p2" ? s.persons[1].emoji : s.persons[0].emoji;
+  const creditorEmoji = settlement.creditor === "p2" ? s.persons[1].emoji : s.persons[0].emoji;
+
+  let body = "";
+  if (settlement.isSettled) {
+    body = `
+      <div class="settle-status-row settled">
+        <span class="settle-badge">✅ Settled</span>
+        <p>Debts for ${MONTHS_LONG[m]} ${state.year} are completely settled up!</p>
+        <button type="button" class="btn btn-ghost sm" data-act="unsettle-month" data-month="${m}">Undo</button>
+      </div>`;
+  } else if (settlement.netAmount > 0) {
+    body = `
+      <div class="settle-owing-row">
+        <div class="settle-avatars">
+          <span class="avatar ${settlement.debtor}">${debtorEmoji}</span>
+          <span class="settle-arrow">➔</span>
+          <span class="avatar ${settlement.creditor}">${creditorEmoji}</span>
+        </div>
+        <div class="settle-details">
+          <b>${esc(debtorName)} owes ${esc(creditorName)}</b>
+          <span class="settle-amt blur-privacy">${fmt(settlement.netAmount)}</span>
+          <small>Fair income split (${Math.round(settlement.p1Ratio * 100)}% / ${Math.round(settlement.p2Ratio * 100)}%) for ${MONTHS[m]}</small>
+        </div>
+        <button type="button" class="btn btn-primary sm" data-act="settle-up-month" data-month="${m}">
+          Mark Settled 🤝
+        </button>
+      </div>`;
+  } else {
+    body = `
+      <div class="settle-status-row all-even">
+        <span class="settle-badge">🎉 Even</span>
+        <p>All settled up! No outstanding balances between partners for ${MONTHS[m]}.</p>
+      </div>`;
+  }
+
+  return `
+    <section class="card settle-up-card">
+      <div class="settle-head">
+        <div class="settle-title">
+          <span>🤝</span>
+          <h3>Monthly Settle-Up · ${MONTHS[m]}</h3>
+        </div>
+        <small class="settle-sub">Fair split & partner balance</small>
+      </div>
+      ${body}
+    </section>`;
+}
+
 
 /* ================================================================== */
 /* Rendering: Expenses                                                 */
@@ -1239,7 +1365,17 @@ function expensesHtml() {
         </div>
         <form id="expForm" autocomplete="off">
           <label>Date<input type="date" name="date" required></label>
-          <label>Amount<input type="text" name="amount" inputmode="decimal" placeholder="0" required></label>
+          <div class="form-row currency-amount-row">
+            <label style="flex:1;">Amount<input type="text" name="amount" inputmode="decimal" placeholder="0" required></label>
+            <label class="currency-sel-wrap">Currency
+              <select name="currency" id="expCurrencySel">
+                ${["USD", "EUR", "GBP", "JPY", "SGD", "AUD", "CAD", "IDR", "THB", "KRW", "MYR"].map((c) => `
+                  <option value="${c}" ${c === (state.lastCurrency || s.currency || "USD") ? "selected" : ""}>${c}</option>
+                `).join("")}
+              </select>
+            </label>
+          </div>
+          <div id="currencyConversionHint" class="currency-conversion-hint hide"></div>
           <label>Category<select name="categoryId" required></select></label>
           <div id="catCapAlert" class="cat-cap-hint-box hide"></div>
           <fieldset class="who">
@@ -1285,10 +1421,41 @@ function expensesHtml() {
           </div>
         </form>
       </section>
-      <section class="card">
-        <div class="list-head"><h2>${MONTHS_LONG[state.month]} ${state.year}</h2><span class="chip" id="expTotal"></span></div>
-        <div id="expList"></div>
-      </section>
+      <div>
+        <section class="card exp-filter-bar">
+          <div class="exp-search-wrap">
+            <span class="exp-search-icon">🔍</span>
+            <input type="search" id="expSearchInput" placeholder="Search merchant, card, description..." value="${esc(state.expenseFilter?.query || "")}" autocomplete="off">
+          </div>
+          <div class="exp-filter-row">
+            <div class="filter-group">
+              <label>Partner</label>
+              <select id="expFilterPerson">
+                <option value="all" ${state.expenseFilter?.person === "all" ? "selected" : ""}>All Partners</option>
+                <option value="p1" ${state.expenseFilter?.person === "p1" ? "selected" : ""}>${esc(s.persons[0].name)}</option>
+                <option value="p2" ${state.expenseFilter?.person === "p2" ? "selected" : ""}>${esc(s.persons[1].name)}</option>
+                <option value="both" ${state.expenseFilter?.person === "both" ? "selected" : ""}>Together (50:50)</option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <label>Payment</label>
+              <select id="expFilterPayment">
+                <option value="all" ${state.expenseFilter?.paymentMethod === "all" ? "selected" : ""}>All Methods</option>
+                <option value="cash" ${state.expenseFilter?.paymentMethod === "cash" ? "selected" : ""}>💵 Cash / Debit</option>
+                <option value="credit_card" ${state.expenseFilter?.paymentMethod === "credit_card" ? "selected" : ""}>💳 Credit Card</option>
+                <option value="installment" ${state.expenseFilter?.paymentMethod === "installment" ? "selected" : ""}>📅 Installment</option>
+              </select>
+            </div>
+          </div>
+          <div class="exp-filter-summary" id="expFilterSummary">
+            <span>Showing expenses</span>
+          </div>
+        </section>
+        <section class="card">
+          <div class="list-head"><h2>${MONTHS_LONG[state.month]} ${state.year}</h2><span class="chip" id="expTotal"></span></div>
+          <div id="expList"></div>
+        </section>
+      </div>
     </div>`;
 }
 
@@ -1326,9 +1493,21 @@ function updateExpenseList() {
   const s = settings();
   const ym = `${state.year}-${pad(state.month + 1)}`;
   const cats = Object.fromEntries(budgetFor(state.year).b.categories.map((c) => [c.id, c]));
-  const list = state.expenses.filter((e) => (e.date || "").startsWith(ym)).sort((a, b) => b.date.localeCompare(a.date));
-  const total = list.reduce((a, e) => a + (Number(e.amount) || 0), 0);
-  $("#expTotal").textContent = `Total ${fmt(total)}`;
+  const monthList = state.expenses.filter((e) => (e.date || "").startsWith(ym)).sort((a, b) => b.date.localeCompare(a.date));
+
+  const filterParams = {
+    query: state.expenseFilter?.query || "",
+    person: state.expenseFilter?.person || "all",
+    paymentMethod: state.expenseFilter?.paymentMethod || "all",
+  };
+  const { filtered: list, totalAmount: total, count } = filterExpenses(monthList, filterParams);
+
+  const totalEl = $("#expTotal");
+  if (totalEl) totalEl.textContent = `Total ${fmt(total)}`;
+  const summaryEl = $("#expFilterSummary");
+  if (summaryEl) {
+    summaryEl.innerHTML = `<span>Showing <b>${count}</b> of ${monthList.length} expenses</span><span>Total: <b class="blur-privacy">${fmt(total)}</b></span>`;
+  }
   el.innerHTML = list.length
     ? list.map((e) => {
         const cat = cats[e.categoryId];
@@ -1378,12 +1557,29 @@ async function submitExpense(form) {
   const instMonths = Number(fd.get("installmentMonths")) || null;
   const instCurr = Number(fd.get("installmentCurrent")) || null;
 
+  const s = settings();
+  const baseCur = s.currency || "USD";
+  const selCur = String(fd.get("currency") || baseCur);
+  let finalAmount = amount;
+  let finalNote = String(fd.get("note") || "").trim();
+
+  if (selCur !== baseCur && finalAmount > 0) {
+    state.lastCurrency = selCur;
+    const origAmt = finalAmount;
+    finalAmount = convertCurrency(origAmt, selCur, baseCur);
+    const sym = CURRENCY_SYMBOLS[selCur] || "";
+    const origTag = `(${sym}${origAmt.toLocaleString()} ${selCur})`;
+    if (!finalNote.includes(selCur)) {
+      finalNote = finalNote ? `${finalNote} ${origTag}` : origTag;
+    }
+  }
+
   const data = {
     date,
-    amount,
+    amount: finalAmount,
     categoryId,
     paidBy: ["p1", "p2", "both"].includes(fd.get("paidBy")) ? fd.get("paidBy") : "p1",
-    note: String(fd.get("note") || "").trim(),
+    note: finalNote,
     paymentMethod: ["cash", "credit_card", "installment"].includes(pm) ? pm : "cash",
     cardName,
     installmentMonths: pm === "installment" ? instMonths : null,
@@ -1531,6 +1727,7 @@ function budgetHtml() {
       <div class="budget-list" id="budgetList">${rows}</div>
       <div class="budget-actions">
         <button class="btn btn-soft" data-act="add-cat">Add category</button>
+        <button class="btn btn-soft" data-act="add-custom-cat">🎨 Custom category ${isPro(s, state.user) ? "" : `<span class="pill-pro-tag">PRO</span>`}</button>
         <button class="btn btn-soft" data-act="balance">Balance to 100%</button>
         <span class="spacer"></span>
         <small id="dirtyNote"></small>
@@ -3108,6 +3305,20 @@ function openSettings() {
           }
         </div>
       </div>
+      <div class="dlg-pin-box">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span>🔒</span>
+            <b>App PIN Lock</b>
+            <span class="chip ${s.pin ? "chip-pro-active" : "chip-pro-free"}">${s.pin ? "PIN ENABLED" : "DISABLED"}</span>
+          </div>
+          ${s.pin
+            ? `<button type="button" class="btn btn-ghost sm" data-act="remove-pin">Remove PIN</button>`
+            : `<button type="button" class="btn btn-soft sm" data-act="prompt-set-pin">Set 4-digit PIN</button>`
+          }
+        </div>
+        <small style="color:var(--ink-soft);display:block;margin:6px 0 0;">${s.pin ? "App requires entering your 4-digit PIN when opening." : "Add a 4-digit privacy PIN to secure your budget on this device."}</small>
+      </div>
       <div class="dlg-pro-box">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
           <div style="display:flex;align-items:center;gap:6px;">
@@ -3699,6 +3910,100 @@ function renderPayPalButtons(dlg) {
   } catch (e) {
     console.error("Error rendering PayPal Buttons:", e);
   }
+}
+
+function openSetPinModal() {
+  const dlg = $("#settingsDialog");
+  if (!dlg) return;
+  dlg.innerHTML = `
+    <div class="dlg-body">
+      <h2>Set App PIN 🔒</h2>
+      <p style="color:var(--ink-soft);font-size:0.9rem;margin-top:-4px;">Enter a 4-digit numeric code to protect your budget.</p>
+      <form id="setPinForm" autocomplete="off">
+        <label style="text-align:center;">4-Digit PIN
+          <input type="password" name="pin" maxlength="4" pattern="[0-9]{4}" inputmode="numeric" placeholder="••••" required autofocus style="text-align:center;font-size:2rem;letter-spacing:10px;width:170px;margin:12px auto;display:block;">
+        </label>
+        <div class="dlg-actions">
+          <button type="button" class="btn btn-ghost" data-act="close-settings">Cancel</button>
+          <button type="submit" class="btn btn-primary">Enable PIN</button>
+        </div>
+      </form>
+    </div>`;
+  dlg.showModal();
+}
+
+function openCustomCategoryModal() {
+  const dlg = $("#settingsDialog");
+  if (!dlg) return;
+  dlg.innerHTML = `
+    <div class="dlg-body">
+      <h2>New Custom Category 🎨</h2>
+      <p style="color:var(--ink-soft);font-size:0.9rem;margin-top:-4px;">Add a tailored spending category for your couple budget plan.</p>
+      <form id="customCategoryForm" autocomplete="off">
+        <div class="two-col-inline">
+          <label style="width:70px;">Emoji
+            <input name="emoji" maxlength="4" value="🏷️" required style="text-align:center;font-size:1.3rem;">
+          </label>
+          <label style="flex:1;">Category Name
+            <input name="name" maxlength="30" placeholder="e.g. Date Nights, Pets, Coffee" required autofocus>
+          </label>
+        </div>
+        <label>Percent of Income (%)
+          <input name="percent" type="number" min="0" max="100" step="0.5" value="5" required>
+        </label>
+        <div class="dlg-actions">
+          <button type="button" class="btn btn-ghost" data-act="close-settings">Cancel</button>
+          <button type="submit" class="btn btn-primary">Add Category</button>
+        </div>
+      </form>
+    </div>`;
+  dlg.showModal();
+}
+
+function checkYearRollover(targetYear) {
+  if (state.budgets[targetYear]) return;
+  const prevYear = targetYear - 1;
+  const prevBudget = state.budgets[prevYear];
+  if (!prevBudget) return;
+
+  const promptedKey = `piggynest_rollover_prompted_${targetYear}`;
+  if (sessionStorage.getItem(promptedKey)) return;
+  sessionStorage.setItem(promptedKey, "1");
+
+  const prevExpenses = state.expenses.filter((e) => (e.date || "").startsWith(String(prevYear)));
+  const rollover = prepareYearRollover(prevBudget, prevExpenses, settings());
+
+  openRolloverModal(targetYear, prevYear, rollover);
+}
+
+function openRolloverModal(targetYear, prevYear, rollover) {
+  const dlg = $("#settingsDialog");
+  if (!dlg) return;
+  dlg.innerHTML = `
+    <div class="dlg-body rollover-dlg">
+      <div style="text-align:center;">
+        <div style="font-size:3rem;margin-bottom:6px;">🎆</div>
+        <h2>Welcome to ${targetYear}!</h2>
+        <p>No budget plan is saved for ${targetYear} yet. Would you like to roll over your <b>${prevYear}</b> budget categories and income plan?</p>
+      </div>
+
+      <div class="card rollover-preview-card">
+        <div class="stat-row"><span>Categories to copy</span><b>${rollover.newBudget.categories.length} categories</b></div>
+        <div class="stat-row"><span>Previous year total budget</span><b>${fmt(rollover.totalBudget)}</b></div>
+        <div class="stat-row"><span>Previous year total spent</span><b>${fmt(rollover.totalSpent)}</b></div>
+        <div class="stat-row"><span>Unspent savings rollover</span><b class="pos">${fmt(rollover.carryoverSavings)}</b></div>
+      </div>
+
+      <div class="dlg-actions" style="flex-direction:column;gap:8px;margin-top:12px;">
+        <button type="button" class="btn btn-primary btn-block" data-act="apply-rollover" data-year="${targetYear}">
+          🎆 Copy ${prevYear} Budget Plan
+        </button>
+        <button type="button" class="btn btn-ghost btn-block" data-act="close-settings">
+          Start Fresh with Blank Budget
+        </button>
+      </div>
+    </div>`;
+  dlg.showModal();
 }
 
 function openProDialog() {
@@ -4330,7 +4635,79 @@ document.addEventListener("click", async (ev) => {
     case "export-csv": exportCsv(); break;
     case "export-json": exportJson(); break;
     case "restore-json-btn": $("#restoreJsonFile")?.click(); break;
-    case "signout": await state.db.signOut(); break;
+    case "signout": {
+      state.pinUnlocked = false;
+      await state.db.signOut();
+      break;
+    }
+    case "toggle-privacy": {
+      state.privacyMode = !state.privacyMode;
+      localStorage.setItem("piggynest_privacy_mode", String(state.privacyMode));
+      document.body.classList.toggle("privacy-mode", state.privacyMode);
+      toast(state.privacyMode ? "🙈 Privacy mode ON (balances blurred)" : "👁️ Privacy mode OFF");
+      render();
+      break;
+    }
+    case "prompt-set-pin": {
+      openSetPinModal();
+      break;
+    }
+    case "remove-pin": {
+      if (confirm("Remove App PIN lock?")) {
+        if (state.settings) state.settings.pin = null;
+        await state.db.saveSettings({ ...state.settings, pin: null });
+        toast("App PIN removed");
+        openSettings();
+      }
+      break;
+    }
+    case "settle-up-month": {
+      const m = Number(el.dataset.month);
+      const key = `${state.year}-${m}`;
+      const settlements = { ...(state.settings?.settlements || {}) };
+      settlements[key] = { isSettled: true, settledAt: new Date().toISOString(), settledBy: state.lastPaidBy || "p1" };
+      if (state.settings) state.settings.settlements = settlements;
+      await state.db.saveSettings({ ...state.settings, settlements });
+      triggerConfetti();
+      toast(`🤝 Marked as settled for ${MONTHS_LONG[m]}!`);
+      renderView();
+      break;
+    }
+    case "unsettle-month": {
+      const m = Number(el.dataset.month);
+      const key = `${state.year}-${m}`;
+      const settlements = { ...(state.settings?.settlements || {}) };
+      delete settlements[key];
+      if (state.settings) state.settings.settlements = settlements;
+      await state.db.saveSettings({ ...state.settings, settlements });
+      toast("Settlement cleared");
+      renderView();
+      break;
+    }
+    case "add-custom-cat": {
+      if (!isPro(settings(), state.user)) {
+        openProDialog();
+        break;
+      }
+      openCustomCategoryModal();
+      break;
+    }
+    case "apply-rollover": {
+      const y = Number(el.dataset.year);
+      const prevYear = y - 1;
+      const prevBudget = state.budgets[prevYear];
+      if (prevBudget) {
+        const prevExpenses = state.expenses.filter((e) => (e.date || "").startsWith(String(prevYear)));
+        const rollover = prepareYearRollover(prevBudget, prevExpenses, settings());
+        await state.db.saveBudget(y, rollover.newBudget);
+        state.budgets[y] = rollover.newBudget;
+        triggerConfetti();
+        toast(`🎆 ${y} budget created from ${prevYear} plan!`);
+        $("#settingsDialog")?.close();
+        render();
+      }
+      break;
+    }
     case "toggle-pro-code": {
       const form = $("#proCodeForm");
       const btn = $("#toggleProCodeBtn");
@@ -4421,6 +4798,22 @@ document.addEventListener("change", (ev) => {
     importJson(ev.target.files[0]);
     ev.target.value = "";
   }
+
+  if (ev.target.id === "expFilterPerson") {
+    state.expenseFilter = state.expenseFilter || {};
+    state.expenseFilter.person = ev.target.value;
+    updateExpenseList();
+  }
+
+  if (ev.target.id === "expFilterPayment") {
+    state.expenseFilter = state.expenseFilter || {};
+    state.expenseFilter.paymentMethod = ev.target.value;
+    updateExpenseList();
+  }
+
+  if (ev.target.id === "expCurrencySel") {
+    updateCurrencyConversionHint();
+  }
   if (ev.target.name === "paymentMethod") {
     const form = ev.target.closest("form");
     if (!form) return;
@@ -4437,6 +4830,59 @@ document.addEventListener("change", (ev) => {
 
 document.addEventListener("submit", (ev) => {
   ev.preventDefault();
+  if (ev.target.id === "pinUnlockForm") {
+    const pin = ev.target.pinInput?.value || "";
+    if (pin === String(state.settings?.pin)) {
+      state.pinUnlocked = true;
+      render();
+    } else {
+      const err = $("#pinErr");
+      if (err) err.textContent = "Incorrect PIN. Try again.";
+      const pinIn = $("#pinInput");
+      if (pinIn) { pinIn.value = ""; pinIn.focus(); }
+    }
+    return;
+  }
+  if (ev.target.id === "setPinForm") {
+    const form = ev.target;
+    const pin = String(form.pin.value || "").trim();
+    if (!/^\d{4}$/.test(pin)) {
+      toast("PIN must be exactly 4 digits");
+      return;
+    }
+    state.settings = state.settings || {};
+    state.settings.pin = pin;
+    state.pinUnlocked = true;
+    state.db.saveSettings({ ...state.settings, pin });
+    $("#settingsDialog")?.close();
+    toast("🔒 4-digit App PIN enabled!");
+    render();
+    return;
+  }
+  if (ev.target.id === "customCategoryForm") {
+    const form = ev.target;
+    const emoji = String(form.emoji.value || "🏷️").trim() || "🏷️";
+    const name = String(form.name.value || "").trim();
+    if (!name) { toast("Please enter a category name"); return; }
+    const percent = Math.max(0, Number(form.percent.value) || 0);
+
+    const d = getDraft();
+    const newId = "cat_" + uid();
+    d.b.categories.push({
+      id: newId,
+      emoji,
+      name,
+      percent,
+      color: PALETTE[d.b.categories.length % PALETTE.length],
+      splitMode: "income",
+      p1Share: 50,
+    });
+    state.dirty = true;
+    $("#settingsDialog")?.close();
+    toast(`Category "${name}" added! 🎨`);
+    renderView();
+    return;
+  }
   if (ev.target.id === "savingsGoalForm") submitSavingsGoal(ev.target);
   if (ev.target.id === "jarForm") {
     const form = ev.target;
@@ -4533,8 +4979,15 @@ document.addEventListener("input", (ev) => {
     handleFormattedNumberInput(t);
   }
 
-  if (t.form?.id === "expForm" && (t.name === "categoryId" || t.name === "amount")) {
+  if (t.id === "expSearchInput") {
+    state.expenseFilter = state.expenseFilter || {};
+    state.expenseFilter.query = t.value;
+    updateExpenseList();
+  }
+
+  if (t.form?.id === "expForm" && (t.name === "categoryId" || t.name === "amount" || t.name === "currency")) {
     updateExpenseFormCapHint();
+    updateCurrencyConversionHint();
   }
 
   if (t.id === "compoundYearsRange" || t.id === "compoundRateInput" || t.id === "compoundMonthlyInput" || t.id === "compoundPrincipalInput") {
@@ -4586,11 +5039,13 @@ document.addEventListener("change", (ev) => {
       t.value = String(state.year);
       return;
     }
-    state.year = Number(t.value);
+    const newYear = Number(t.value);
+    state.year = newYear;
     state.draft = null;
     state.dirty = false;
     refreshDirtyDot();
     renderView();
+    checkYearRollover(newYear);
     return;
   }
   if (t.id === "monthSel") {

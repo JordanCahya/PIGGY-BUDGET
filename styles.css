@@ -3210,3 +3210,296 @@ body { background: var(--bg); background-attachment: scroll; }
   gap: 8px;
   flex-wrap: wrap;
 }
+
+/* ================================================================== */
+/* Phase 6: Settle-Up, Search/Filter, Multi-Currency, Privacy & PIN   */
+/* ================================================================== */
+
+/* Settle-Up Card */
+.settle-up-card {
+  margin-top: 18px;
+  background: linear-gradient(135deg, rgba(255, 248, 240, 0.75) 0%, rgba(255, 240, 245, 0.8) 100%);
+  border: 1px solid rgba(255, 143, 177, 0.3);
+}
+
+[data-theme="mocha"] .settle-up-card,
+[data-theme="dark"] .settle-up-card {
+  background: linear-gradient(135deg, rgba(42, 32, 38, 0.8) 0%, rgba(35, 28, 35, 0.85) 100%);
+  border-color: rgba(255, 143, 177, 0.2);
+}
+
+.settle-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.settle-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settle-title h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.settle-sub {
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+}
+
+.settle-owing-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 8px 0 2px;
+}
+
+.settle-avatars {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.settle-arrow {
+  color: var(--pink-deep);
+  font-weight: 800;
+  font-size: 1.1rem;
+}
+
+.settle-details {
+  flex: 1;
+  min-width: 160px;
+}
+
+.settle-details b {
+  font-size: 0.96rem;
+  color: var(--ink);
+  display: block;
+}
+
+.settle-amt {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--pink-deep);
+  display: inline-block;
+  margin: 2px 0;
+}
+
+.settle-details small {
+  color: var(--ink-soft);
+  display: block;
+  font-size: 0.78rem;
+}
+
+.settle-status-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+}
+
+.settle-badge {
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--mint-soft, #e6f8f2);
+  color: var(--mint, #00875a);
+}
+
+.settle-status-row p {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--ink-soft);
+  flex: 1;
+}
+
+/* Expense Filter & Search Bar */
+.exp-filter-bar {
+  margin-bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+}
+
+.exp-search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.exp-search-icon {
+  position: absolute;
+  left: 12px;
+  font-size: 0.95rem;
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+#expSearchInput {
+  width: 100%;
+  padding: 9px 12px 9px 36px;
+  border-radius: 999px;
+  border: 1.5px solid var(--line);
+  background: var(--bg);
+  font-size: 0.9rem;
+  color: var(--ink);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+#expSearchInput:focus {
+  border-color: var(--pink);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(255, 143, 177, 0.2);
+}
+
+.exp-filter-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.filter-group label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--ink-soft);
+  margin: 0;
+}
+
+.filter-group select {
+  padding: 7px 10px;
+  border-radius: var(--radius-sm, 10px);
+  border: 1px solid var(--line);
+  background: var(--bg);
+  font-size: 0.85rem;
+  color: var(--ink);
+}
+
+.exp-filter-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+  padding-top: 4px;
+  border-top: 1px dashed var(--line);
+}
+
+/* Multi-Currency in Add Expense Form */
+.currency-amount-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.currency-sel-wrap {
+  width: 110px;
+}
+
+.currency-conversion-hint {
+  background: linear-gradient(135deg, rgba(255, 240, 245, 0.6) 0%, rgba(255, 252, 240, 0.8) 100%);
+  border: 1px solid rgba(255, 143, 177, 0.3);
+  border-radius: var(--radius-sm, 10px);
+  padding: 7px 12px;
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.84rem;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.currency-conversion-hint.hide {
+  display: none !important;
+}
+
+.currency-conversion-hint b {
+  color: var(--pink-deep);
+}
+
+.currency-conversion-hint small {
+  color: var(--ink-soft);
+}
+
+/* Privacy Mode */
+.privacy-toggle-btn {
+  font-size: 1.15rem;
+  padding: 4px 8px;
+  transition: transform 0.15s ease;
+}
+
+.privacy-toggle-btn:hover {
+  transform: scale(1.1);
+}
+
+.privacy-mode .blur-privacy,
+.privacy-mode .hero-left b,
+.privacy-mode .stat b,
+.privacy-mode .person .stat-row b,
+.privacy-mode .inv-value,
+.privacy-mode .exp-amt,
+.privacy-mode .jar-amounts b,
+.privacy-mode .settle-amt {
+  filter: blur(7px) !important;
+  user-select: none !important;
+  transition: filter 0.2s ease;
+}
+
+.privacy-mode .blur-privacy:hover,
+.privacy-mode .hero-left b:hover,
+.privacy-mode .exp-amt:hover,
+.privacy-mode .inv-value:hover,
+.privacy-mode .jar-amounts b:hover,
+.privacy-mode .settle-amt:hover {
+  filter: blur(0px) !important;
+}
+
+/* App PIN Lock */
+.dlg-pin-box {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin: 12px 0;
+}
+
+.pin-lock-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.pin-card {
+  max-width: 360px;
+  width: 100%;
+  text-align: center;
+}
+
+/* Rollover Modal */
+.rollover-dlg {
+  padding: 8px 4px;
+}
+
+.rollover-preview-card {
+  background: var(--bg);
+  margin: 14px 0;
+  padding: 14px 18px;
+  border-radius: var(--radius);
+}
