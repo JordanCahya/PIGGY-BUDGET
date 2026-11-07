@@ -434,7 +434,13 @@ export function validateBackupPayload(raw) {
   };
 }
 
-export function generateWrappedData({ year, budget, expenses = [], settings = {} } = {}) {
+export function generateWrappedData({
+  year,
+  budget,
+  expenses = [],
+  settings = {},
+  investments = [],
+} = {}) {
   const targetYear = Number(year) || (budget && Number(budget.year)) || new Date().getFullYear();
 
   // 1. Yearly budget calculation
@@ -614,7 +620,67 @@ export function generateWrappedData({ year, budget, expenses = [], settings = {}
     saved: Math.max(0, monthBudget - bestMonthSpent),
   };
 
-  // 7. Couple Archetype
+  // 7. Investment Stats for the year
+  const safeInvestments = Array.isArray(investments) ? investments : [];
+  let totalInvested = 0;
+  let portfolioValue = 0;
+  let totalGain = 0;
+
+  for (const inv of safeInvestments) {
+    if (!inv || typeof inv !== "object") continue;
+
+    if (Array.isArray(inv.entries) && inv.entries.length > 0) {
+      let invVal = 0, invPut = 0, invOut = 0, flowSeen = false;
+      const sortedEntries = [...inv.entries].sort((a, b) =>
+        (a.date || "").localeCompare(b.date || "") || (a.kind === "add" ? -1 : 1)
+      );
+      for (const e of sortedEntries) {
+        const a = Math.max(0, Number(e.amount) || 0);
+        if (e.kind === "add") {
+          invVal += a;
+          invPut += a;
+          flowSeen = true;
+        } else if (e.kind === "withdraw") {
+          invVal -= a;
+          invOut += a;
+          flowSeen = true;
+        } else if (e.kind === "value") {
+          if (!flowSeen) {
+            invPut += a;
+            flowSeen = true;
+          }
+          invVal = a;
+        }
+      }
+      const invNet = invPut - invOut;
+      const invGain = invVal - invNet;
+      totalInvested += Math.max(0, invPut);
+      portfolioValue += Math.max(0, invVal);
+      totalGain += invGain;
+    } else {
+      // Direct / flat holding attributes
+      const put = Number(inv.totalInvested ?? inv.invested ?? inv.put ?? inv.amount ?? 0);
+      const val = Number(inv.portfolioValue ?? inv.value ?? inv.currentValue ?? put);
+      const gain = Number(inv.totalGain ?? inv.gain ?? (val - put));
+      totalInvested += Math.max(0, put);
+      portfolioValue += Math.max(0, val);
+      totalGain += gain;
+    }
+  }
+
+  if (totalInvested === 0 && portfolioValue > 0) {
+    totalInvested = portfolioValue;
+  }
+
+  const hasInvestments = Boolean(safeInvestments.length > 0 && totalInvested > 0);
+  const investmentStats = {
+    hasInvestments,
+    totalInvested,
+    totalGain,
+    portfolioValue,
+  };
+
+  // 8. Couple Archetype
   const makeArchetype = (id, name, emoji, description) => ({
     id,
     name,
@@ -637,6 +703,17 @@ export function generateWrappedData({ year, budget, expenses = [], settings = {}
       "You crushed your savings goals this year! Over 20% of your total budget was saved."
     );
   } else if (
+    hasInvestments &&
+    totalInvested > 0 &&
+    (totalGain > 0 || totalInvested >= (totalSpent * 0.1) || totalInvested >= (totalBudget * 0.1) || !topCategories.length)
+  ) {
+    archetype = makeArchetype(
+      "wealth_builders",
+      "The Wealth Builders",
+      "📈",
+      "Growing your future together! You actively invested and built your family wealth."
+    );
+  } else if (
     topCatName.includes("food") ||
     topCatName.includes("grocer") ||
     topCatName.includes("dining") ||
@@ -648,6 +725,13 @@ export function generateWrappedData({ year, budget, expenses = [], settings = {}
       "The Savvy Foodies",
       "🍙",
       "Good food is your shared love language! Food & groceries topped your spending charts."
+    );
+  } else if (hasInvestments && totalInvested > 0) {
+    archetype = makeArchetype(
+      "wealth_builders",
+      "The Wealth Builders",
+      "📈",
+      "Growing your future together! You actively invested and built your family wealth."
     );
   } else if (totalSpent > 0 && Math.abs(p1Percent - p2Percent) <= 5) {
     archetype = makeArchetype(
@@ -692,7 +776,7 @@ export function generateWrappedData({ year, budget, expenses = [], settings = {}
     );
   }
 
-  // 8. Active Mascot
+  // 9. Active Mascot
   const mascot = getMascot(settings?.mascot);
 
   return {
@@ -707,5 +791,6 @@ export function generateWrappedData({ year, budget, expenses = [], settings = {}
     topMonth,
     archetype,
     mascot,
+    investments: investmentStats,
   };
 }
