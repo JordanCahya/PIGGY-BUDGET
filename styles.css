@@ -2929,3 +2929,293 @@ body { background: var(--bg); background-attachment: scroll; }
   color: #86efac;
   border-color: #14532d;
 }
+
+/* ================================================================== */
+/* Piggy Pro Gating & Sweet Gold/Pink Gradients                        */
+/* ================================================================== */
+
+.pro-locked-wrapper {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius);
+}
+
+.pro-lock-overlay {
+  position: absolute;
+  inset: 0;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  background: rgba(255, 255, 255, 0.78);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  z-index: 10;
+  border-radius: var(--radius);
+  animation: fadeIn 0.25s ease-out;
+}
+
+[data-theme="mocha"] .pro-lock-overlay,
+[data-theme="dark"] .pro-lock-overlay {
+  background: rgba(30, 22, 28, 0.84);
+}
+
+.pro-lock-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(135deg, #ffd700 0%, #ff8fb1 100%);
+  color: #522700;
+  font-weight: 800;
+  font-size: 0.72rem;
+  letter-spacing: 0.6px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  box-shadow: 0 2px 8px rgba(255, 143, 177, 0.35);
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+.pro-lock-overlay h3 {
+  font-size: 1.3rem;
+  margin: 0 0 8px 0;
+  background: linear-gradient(135deg, var(--pink-deep) 0%, #ff8fb1 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.pro-lock-overlay p {
+  font-size: 0.88rem;
+  color: var(--ink-soft);
+  max-width: 400px;
+  margin: 0 auto 16px auto;
+  line-height: 1.45;
+}
+
+.pro-upgrade-btn {
+  background: linear-gradient(135deg, #ff8fb1 0%, #ffaa00 100%) !important;
+  color: #fff !important;
+  font-weight: 700 !important;
+  border: none !important;
+  box-shadow: 0 4px 14px rgba(255, 143, 177, 0.45) !important;
+  transition: transform 0.15s ease, box-shadow 0.15s ease !important;
+}
+
+.pro-upgrade-btn:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 6px 20px rgba(255, 143, 177, 0.55) !important;
+}
+
+/* Jars locked promo card */
+.jar-locked-section {
+  border: 2px dashed rgba(255, 143, 177, 0.45);
+  background: linear-gradient(135deg, rgba(255, 245, 248, 0.85) 0%, rgba(255, 252, 245, 0.95) 100%);
+  text-align: center;
+  padding: 26px 20px;
+  border-radius: var(--radius);
+  position: relative;
+}
+
+[data-theme="mocha"] .jar-locked-section,
+[data-theme="dark"] .jar-locked-section {
+  background: linear-gradient(135deg, rgba(45, 30, 38, 0.85) 0%, rgba(35, 28, 35, 0.95) 100%);
+  border-color: rgba(255, 143, 177, 0.25);
+}
+
+.jar-locked-overlay h3 {
+  font-size: 1.25rem;
+  margin: 0 0 6px;
+  color: var(--ink);
+}
+
+.jar-locked-overlay p {
+  font-size: 0.88rem;
+  color: var(--ink-soft);
+  max-width: 480px;
+  margin: 0 auto;
+  line-height: 1.45;
+}
+
+.jar-mock-row {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin: 14px 0 18px;
+}
+
+.jar-mock-pill {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.03);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Feed locked card */
+.feed-locked-card {
+  border: 1px dashed rgba(255, 143, 177, 0.35);
+  background: linear-gradient(135deg, rgba(255, 250, 252, 0.6) 0%, rgba(255, 255, 255, 0.9) 100%);
+}
+
+.feed-locked-preview {
+  padding: 4px 0 6px;
+  color: var(--ink-soft);
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+
+.pro-chip {
+  background: linear-gradient(135deg, #ffd700 0%, #ff8fb1 100%);
+  color: #522700;
+  font-weight: 800;
+  font-size: 0.68rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.pro-lock-hint {
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.2) 0%, rgba(255, 143, 177, 0.25) 100%);
+  border: 1px solid rgba(255, 143, 177, 0.4);
+  color: var(--pink-deep);
+  font-weight: 700;
+  font-size: 0.72rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pro-lock-hint:hover {
+  background: linear-gradient(135deg, #ffd700 0%, #ff8fb1 100%);
+  color: #522700;
+}
+
+/* React locked button */
+.pro-react-locked {
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.15) 0%, rgba(255, 143, 177, 0.2) 100%) !important;
+  color: var(--pink-deep) !important;
+  border: 1px solid rgba(255, 143, 177, 0.3) !important;
+  font-size: 0.8rem;
+}
+
+/* Plan selector in Pro Modal */
+.pro-tier-selector {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin: 12px 0;
+}
+
+.pro-tier-btn {
+  background: var(--bg);
+  border: 2px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px 8px;
+  text-align: center;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.pro-tier-btn:hover {
+  border-color: var(--pink-soft);
+}
+
+.pro-tier-btn.active {
+  border-color: var(--pink);
+  background: linear-gradient(135deg, rgba(255, 240, 245, 0.5) 0%, rgba(255, 252, 240, 0.6) 100%);
+  box-shadow: 0 4px 14px rgba(255, 143, 177, 0.2);
+}
+
+.pro-tier-btn b {
+  font-size: 0.98rem;
+  color: var(--ink);
+}
+
+.pro-tier-btn span {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: var(--pink-deep);
+}
+
+.pro-tier-btn small {
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+}
+
+.pro-tier-tag {
+  position: absolute;
+  top: -9px;
+  background: linear-gradient(135deg, #ffd700 0%, #ff8fb1 100%);
+  color: #522700;
+  font-weight: 800;
+  font-size: 0.65rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  letter-spacing: 0.4px;
+}
+
+/* Settings Pro Box */
+.dlg-pro-box {
+  background: linear-gradient(135deg, rgba(255, 245, 248, 0.7) 0%, rgba(255, 252, 245, 0.8) 100%);
+  border: 1px solid rgba(255, 143, 177, 0.35);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin: 12px 0;
+}
+
+[data-theme="mocha"] .dlg-pro-box,
+[data-theme="dark"] .dlg-pro-box {
+  background: rgba(40, 28, 35, 0.7);
+  border-color: rgba(255, 143, 177, 0.2);
+}
+
+.chip-pro-active {
+  background: linear-gradient(135deg, #ffd700 0%, #ff8fb1 100%);
+  color: #522700;
+  font-weight: 800;
+  font-size: 0.7rem;
+}
+
+.chip-pro-free {
+  background: var(--line);
+  color: var(--ink-soft);
+  font-weight: 700;
+  font-size: 0.7rem;
+}
+
+/* Confetti particles */
+@keyframes confetti-burst {
+  0% {
+    transform: translate(0, 0) rotate(0deg) scale(0.6);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--tx), var(--ty)) rotate(var(--rot)) scale(1.1);
+    opacity: 0;
+  }
+}
+
+.confetti-particle {
+  position: fixed;
+  pointer-events: none;
+  z-index: 999999;
+  user-select: none;
+  font-size: 1.4rem;
+  animation: confetti-burst 2.2s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}

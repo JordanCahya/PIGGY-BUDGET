@@ -1044,3 +1044,37 @@ export function generateInvestmentsCSV(investments = []) {
 
   return "\uFEFF" + header + (rows.length > 0 ? rows.join("\r\n") + "\r\n" : "");
 }
+
+/* ------------------------------------------------------------------ */
+/* Phase 5 Pro Features Gating                                        */
+/* ------------------------------------------------------------------ */
+
+export const PRO_FEATURES = {
+  JARS: "jars",
+  REACTIONS: "reactions",
+  ACTIVITY_FEED: "activity_feed",
+  CATEGORY_CAPS: "category_caps",
+  CSV_EXPORT: "csv_export",
+  COMPOUND_CALCULATOR: "compound_calculator",
+};
+
+export function isProUser(state) {
+  if (!state || typeof state !== "object") return false;
+  if (state.isPro === true || state.pro === true) return true;
+  const s = state.settings || state;
+  if (s && (s.isPro === true || s.pro === true)) return true;
+  if (typeof isPro === "function") {
+    return isPro(state.settings || state, state.user || null);
+  }
+  return false;
+}
+
+export function canAccessProFeature(featureKey, state) {
+  const targetState =
+    state && typeof state === "object"
+      ? state
+      : featureKey && typeof featureKey === "object"
+      ? featureKey
+      : null;
+  return isProUser(targetState);
+}

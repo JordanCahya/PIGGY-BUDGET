@@ -9,6 +9,8 @@ import {
   MASCOTS,
   isAdmin,
   isPro,
+  isProUser,
+  canAccessProFeature,
   getProRemainingDays,
   PRO_PRICE,
   PAYPAL_PLAN_ID,
@@ -292,6 +294,13 @@ function updateExpenseFormCapHint() {
   const f = $("#expForm");
   const alertEl = $("#catCapAlert");
   if (!f || !alertEl) return;
+
+  if (!isPro(settings(), state.user)) {
+    alertEl.innerHTML = `<span class="chip pro-lock-hint" data-act="open-pro" title="Unlock Smart Anomaly & Budget Cap Alerts with Pro">✨ PRO Cap Alerts</span>`;
+    alertEl.classList.remove("hide");
+    return;
+  }
+
   const catId = f.categoryId?.value;
   if (!catId) {
     alertEl.classList.add("hide");
@@ -330,6 +339,26 @@ function downloadCsvFile(csvContent, filename) {
 }
 
 function jarsSectionHtml() {
+  const pro = isPro(settings(), state.user);
+  if (!pro) {
+    return `
+      <section class="card jar-locked-section">
+        <div class="jar-locked-overlay">
+          <div class="pro-lock-badge">🏺 ✨ PIGGY PRO</div>
+          <h3>Sinking Funds & Goal Jars</h3>
+          <p>Create visual buckets for Bali trips, car maintenance, holiday gifts, and emergency reserves with automatic monthly pace planning.</p>
+          <div class="jar-mock-row">
+            <div class="jar-mock-pill">✈️ Bali Trip · 65%</div>
+            <div class="jar-mock-pill">🚗 Car Service · $250/mo pace</div>
+            <div class="jar-mock-pill">🛡️ Emergency Fund · $10k</div>
+          </div>
+          <button type="button" class="btn btn-primary pro-upgrade-btn" data-act="open-pro">
+            ✨ Unlock Piggy Jars with Pro
+          </button>
+        </div>
+      </section>`;
+  }
+
   const jars = state.jars || [];
   const jarsList = jars.map((jar) => {
     const prog = calculateJarProgress(jar);
@@ -378,6 +407,24 @@ function jarsSectionHtml() {
 }
 
 function activityFeedHtml() {
+  const pro = isPro(settings(), state.user);
+  if (!pro) {
+    return `
+      <section class="card feed-card feed-locked-card">
+        <div class="feed-head" data-act="open-pro">
+          <div class="feed-title">
+            <span>💬</span>
+            <h3>Partner Activity Feed</h3>
+            <span class="chip pro-chip">✨ PRO</span>
+          </div>
+          <button type="button" class="btn btn-ghost sm" data-act="open-pro" style="font-size:0.75rem;">Unlock</button>
+        </div>
+        <div class="feed-locked-preview">
+          <p>Get real-time updates when your partner logs spending, tops up a piggy jar, or reacts to an expense.</p>
+        </div>
+      </section>`;
+  }
+
   const feed = state.feed || [];
   const isOpen = state.feedOpen !== false;
   return `
@@ -560,6 +607,28 @@ function settings() {
   };
 }
 
+function triggerConfetti() {
+  const emojis = ["🎉", "✨", "👑", "💖", "🪙", "⭐", "💎", "🌸"];
+  const count = 35;
+  for (let i = 0; i < count; i++) {
+    const el = document.createElement("div");
+    el.className = "confetti-particle";
+    el.textContent = emojis[Math.floor(Math.random() * emojis.length)];
+    el.style.left = `${50 + (Math.random() * 20 - 10)}vw`;
+    el.style.top = `${50 + (Math.random() * 20 - 10)}vh`;
+    const angle = Math.random() * 2 * Math.PI;
+    const dist = 120 + Math.random() * 280;
+    const tx = Math.cos(angle) * dist;
+    const ty = Math.sin(angle) * dist - 80;
+    const rot = `${Math.random() * 720 - 360}deg`;
+    el.style.setProperty("--tx", `${tx}px`);
+    el.style.setProperty("--ty", `${ty}px`);
+    el.style.setProperty("--rot", rot);
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 2400);
+  }
+}
+
 function proBadgeHtml(s) {
   if (isAdmin(state.user)) {
     return `<span class="pro-badge admin" data-act="open-pro" role="button" tabindex="0">👑 ADMIN</span>`;
@@ -567,9 +636,9 @@ function proBadgeHtml(s) {
   if (isPro(s, state.user)) {
     const days = getProRemainingDays(s);
     if (days !== null && days > 0 && !s.subscriptionId) {
-      return `<button type="button" class="pro-badge active" data-act="open-pro">💎 PRO (${days}d left)</button>`;
+      return `<button type="button" class="pro-badge active" data-act="open-pro">👑 PRO MEMBER (${days}d)</button>`;
     }
-    return `<button type="button" class="pro-badge active" data-act="open-pro">💎 PRO</button>`;
+    return `<button type="button" class="pro-badge active" data-act="open-pro">👑 PRO MEMBER</button>`;
   }
   return `<button type="button" class="pro-badge upgrade-trigger" data-act="open-pro">✨ Upgrade to Pro</button>`;
 }
@@ -1066,6 +1135,7 @@ function homeHtml() {
           <div class="cat-name"><b>${esc(cat.name)}</b><small>${cat.percent}% of income</small></div>
           <div style="display:flex;align-items:center;gap:4px;">
             ${(() => {
+              if (!isPro(s, state.user)) return "";
               const capState = { annualBudget: c.total, categories: b.categories, year: state.year, expenses: state.expenses };
               const cap = calculateCategoryCap(cat.id, capState, m);
               if (cap.status === "exceeded") return `<span class="chip cat-cap-badge cap-danger">🚨 Exceeded</span>`;
@@ -1263,7 +1333,10 @@ function updateExpenseList() {
             : `<span class="chip who-${PERSON_KEYS[pi]}">${esc(s.persons[pi].emoji)} ${esc(s.persons[pi].name)}</span>`}
           <b class="exp-amt">${fmt(e.amount)}</b>
           <div class="row-actions">
-            <button type="button" class="icon-btn sm exp-react-trigger" data-act="open-reactions" data-id="${esc(e.id)}" title="React with emoji">❤️+</button>
+            ${isPro(s, state.user)
+              ? `<button type="button" class="icon-btn sm exp-react-trigger" data-act="open-reactions" data-id="${esc(e.id)}" title="React with emoji">❤️+</button>`
+              : `<button type="button" class="icon-btn sm exp-react-trigger pro-react-locked" data-act="open-pro" title="Partner Reactions (✨ PRO)">✨</button>`
+            }
             <button class="icon-btn sm" data-act="edit-exp" data-id="${esc(e.id)}" aria-label="Edit expense">✏️</button>
             <button class="icon-btn sm" data-act="del-exp" data-id="${esc(e.id)}" aria-label="Delete expense">🗑️</button>
           </div>
@@ -1924,6 +1997,7 @@ function investCategory() {
 
 function compoundCalcHtml(startingPrincipal = 0) {
   const s = settings();
+  const pro = isPro(s, state.user);
   const initPrincipal = state.compound?.principal ?? startingPrincipal;
   const initMonthly = state.compound?.monthly ?? (s.savingsGoal || 500);
   const initRate = state.compound?.rate ?? 8;
@@ -1932,6 +2006,45 @@ function compoundCalcHtml(startingPrincipal = 0) {
   let milestone = "🌱 Compounding in Action";
   if (growth.futureValue >= 1000000) milestone = "🎉 Millionaire Nest Projected!";
   else if (growth.totalInterest > growth.totalContributed) milestone = "🚀 Interest Outearns Contributions!";
+
+  if (!pro) {
+    return `
+      <section class="card compound-calc-card pro-locked-wrapper" id="compoundCalcCard">
+        <div class="pro-lock-overlay">
+          <div class="pro-lock-badge">🚀 ✨ PIGGY PRO</div>
+          <h3>Future Nest Compound Wealth Projector</h3>
+          <p>Simulate compounding portfolio growth, dividend reinvestment, and celebrate future millionaire milestones together.</p>
+          <button type="button" class="btn btn-primary pro-upgrade-btn" data-act="open-pro">
+            ✨ Unlock Future Nest Projector with Pro
+          </button>
+        </div>
+        <div style="filter:blur(4px);pointer-events:none;opacity:0.55;">
+          <div class="compound-calc-head">
+            <div class="compound-calc-title">
+              <span>🚀</span>
+              <h2>Future Nest Compound Calculator</h2>
+            </div>
+            <span class="chip">${esc(milestone)}</span>
+          </div>
+          <div class="compound-hero-stat">
+            <span class="compound-hero-label">Projected Future Nest Egg</span>
+            <b class="compound-hero-num">${fmt(growth.futureValue)}</b>
+            <span class="compound-hero-sub">in ${initYears} years at ${initRate}% annual return</span>
+          </div>
+          <div class="compound-dual-breakdown">
+            <div class="compound-mini-stat">
+              <span>Total Contributed</span>
+              <b>${fmt(growth.totalContributed)}</b>
+            </div>
+            <div class="compound-mini-stat">
+              <span>Growth Earned</span>
+              <b class="pos">+${fmt(growth.totalInterest)}</b>
+            </div>
+          </div>
+        </div>
+      </section>`;
+  }
+
   return `
     <section class="card compound-calc-card" id="compoundCalcCard">
       <div class="compound-calc-head">
@@ -2976,11 +3089,25 @@ function openSettings() {
           }
         </div>
       </div>
+      <div class="dlg-pro-box">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span>👑</span>
+            <b>Piggy Pro Membership</b>
+            <span class="chip ${isPro(s, state.user) ? "chip-pro-active" : "chip-pro-free"}">${isPro(s, state.user) ? "PRO ACTIVE" : "FREE MODE"}</span>
+          </div>
+          <button type="button" class="btn btn-soft sm" data-act="open-pro">${isPro(s, state.user) ? "Manage Subscription" : "✨ Upgrade"}</button>
+        </div>
+        <small style="color:var(--ink-soft);display:block;margin:6px 0 8px;">${isPro(s, state.user) ? "All 5 Phase 5 expansion superpowers are unlocked on your nest." : "Upgrade to unlock Piggy Jars, Partner Reactions, Cap Alerts, CSV Export, and Compound Projector."}</small>
+        <div>
+          <button type="button" class="btn btn-ghost sm" data-act="toggle-pro-demo">${isPro(s, state.user) ? "Switch to Free Mode (Testing)" : "⚡ Instant Demo Pro"}</button>
+        </div>
+      </div>
       <div class="dlg-backup">
         <small style="font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.5px;">Backup & Data Export</small>
         <div class="dlg-backup-btns">
-          <button type="button" class="btn btn-soft" data-act="export-expenses-csv">📊 Download Expenses CSV</button>
-          <button type="button" class="btn btn-soft" data-act="export-investments-csv">📈 Download Investments & Portfolio CSV</button>
+          <button type="button" class="btn btn-soft" data-act="export-expenses-csv">📊 Download Expenses CSV <span class="pill-pro-tag">PRO</span></button>
+          <button type="button" class="btn btn-soft" data-act="export-investments-csv">📈 Download Investments & Portfolio CSV <span class="pill-pro-tag">PRO</span></button>
           <button type="button" class="btn btn-soft" data-act="export-json">💾 Backup all data (JSON)</button>
           <button type="button" class="btn btn-soft" data-act="restore-json-btn">📥 Restore from JSON</button>
           <input type="file" id="restoreJsonFile" accept=".json,application/json" class="hide">
@@ -3605,33 +3732,77 @@ function openProDialog() {
         </div>` : ""}
       </div>
 
+      ${!proActive && !adminUser ? `
+      <div class="pro-tier-selector">
+        <button type="button" class="pro-tier-btn active" data-act="select-pro-plan" data-plan="annual">
+          <span class="pro-tier-tag">Save 30%</span>
+          <b>Annual Plan</b>
+          <span>$24.99 / yr</span>
+          <small>~$2.08 / month</small>
+        </button>
+        <button type="button" class="pro-tier-btn" data-act="select-pro-plan" data-plan="monthly">
+          <b>Monthly Plan</b>
+          <span>$2.99 / mo</span>
+          <small>Cancel anytime</small>
+        </button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;">
+        <button type="button" class="btn btn-primary btn-block pro-upgrade-btn" data-act="activate-pro-trial" style="padding:12px 18px;font-size:1.05rem;">
+          ✨ Start 7-Day Free Trial ($0 today)
+        </button>
+        <button type="button" class="btn btn-soft btn-block" data-act="activate-pro-demo">
+          ⚡ Instant Demo Unlock (Full Pro)
+        </button>
+      </div>` : ""}
+
       <div class="pro-features-list">
+        <div class="pro-feature-item">
+          <span class="pro-feature-icon">🏺</span>
+          <div>
+            <b>Unlimited Piggy Jars (Goal Buckets)</b>
+            <p>Visual sinking funds for vacations, maintenance, and emergency reserves with monthly pace tracking.</p>
+          </div>
+        </div>
+        <div class="pro-feature-item">
+          <span class="pro-feature-icon">💬</span>
+          <div>
+            <b>Partner Activity Feed & Reactions</b>
+            <p>Live couple spending feed and interactive emoji reactions (❤️ 👏 😂 😱 💸) on any expense.</p>
+          </div>
+        </div>
+        <div class="pro-feature-item">
+          <span class="pro-feature-icon">🚨</span>
+          <div>
+            <b>Smart Category Cap & Anomaly Alerts</b>
+            <p>Proactive budget warnings before you overspend on dining, shopping, and everyday essentials.</p>
+          </div>
+        </div>
+        <div class="pro-feature-item">
+          <span class="pro-feature-icon">📊</span>
+          <div>
+            <b>1-Tap Excel / CSV Data Export</b>
+            <p>Export all expense transactions and complete investment portfolio records formatted for Excel.</p>
+          </div>
+        </div>
+        <div class="pro-feature-item">
+          <span class="pro-feature-icon">📈</span>
+          <div>
+            <b>Future Nest Compound Wealth Projector</b>
+            <p>Simulate compounding returns and celebrate future millionaire milestones over 1–30 years.</p>
+          </div>
+        </div>
         <div class="pro-feature-item">
           <span class="pro-feature-icon">📷</span>
           <div>
             <b>Turnkey AI Receipt Scanner</b>
-            <p>Snap any receipt — auto-fills amounts, dates, and categories with zero setup.</p>
-          </div>
-        </div>
-        <div class="pro-feature-item">
-          <span class="pro-feature-icon">🐱</span>
-          <div>
-            <b>All Companion Mascots</b>
-            <p>Unlock Mochi the Cat, Boba the Bear, and Bunny the Rabbit.</p>
+            <p>Snap any receipt — auto-fills amounts, dates, and categories with zero manual effort.</p>
           </div>
         </div>
         <div class="pro-feature-item">
           <span class="pro-feature-icon">🎨</span>
           <div>
-            <b>Deluxe Cozy Themes</b>
-            <p>Dark Mocha, Matcha Sage, Lavender Dream, and Honey Cream.</p>
-          </div>
-        </div>
-        <div class="pro-feature-item">
-          <span class="pro-feature-icon">🔄</span>
-          <div>
-            <b>1-Tap Recurring Bills Sync</b>
-            <p>Automated monthly bill detection and effortless logging.</p>
+            <b>Deluxe Cozy Themes & Companion Mascots</b>
+            <p>Dark Mocha, Matcha Sage, Lavender Dream, Mochi the Cat, Boba the Bear, and Bunny the Rabbit.</p>
           </div>
         </div>
       </div>
@@ -3866,9 +4037,18 @@ document.addEventListener("click", async (ev) => {
   const act = el.dataset.act;
   switch (act) {
     case "tab": setTab(el.dataset.tab); break;
-    case "new-jar": openJarModal(); break;
-    case "edit-jar": openJarModal(el.dataset.id); break;
+    case "new-jar": {
+      if (!isPro(settings(), state.user)) { openProDialog(); break; }
+      openJarModal();
+      break;
+    }
+    case "edit-jar": {
+      if (!isPro(settings(), state.user)) { openProDialog(); break; }
+      openJarModal(el.dataset.id);
+      break;
+    }
     case "del-jar": {
+      if (!isPro(settings(), state.user)) { openProDialog(); break; }
       if (confirm("Delete this goal jar?")) {
         const remaining = (state.jars || []).filter((j) => j.id !== el.dataset.id);
         await saveJars(remaining);
@@ -3877,15 +4057,29 @@ document.addEventListener("click", async (ev) => {
       }
       break;
     }
-    case "add-jar-money": openJarMoneyModal(el.dataset.id, "add"); break;
-    case "withdraw-jar-money": openJarMoneyModal(el.dataset.id, "withdraw"); break;
+    case "add-jar-money": {
+      if (!isPro(settings(), state.user)) { openProDialog(); break; }
+      openJarMoneyModal(el.dataset.id, "add");
+      break;
+    }
+    case "withdraw-jar-money": {
+      if (!isPro(settings(), state.user)) { openProDialog(); break; }
+      openJarMoneyModal(el.dataset.id, "withdraw");
+      break;
+    }
     case "toggle-feed": {
+      if (!isPro(settings(), state.user)) { openProDialog(); break; }
       state.feedOpen = !state.feedOpen;
       renderView();
       break;
     }
-    case "open-reactions": openReactionPicker(el.dataset.id); break;
+    case "open-reactions": {
+      if (!isPro(settings(), state.user)) { openProDialog(); break; }
+      openReactionPicker(el.dataset.id);
+      break;
+    }
     case "select-reaction": {
+      if (!isPro(settings(), state.user)) { openProDialog(); break; }
       const expId = el.dataset.id;
       const emoji = el.dataset.emoji;
       const exp = state.expenses.find((x) => x.id === expId);
@@ -3906,6 +4100,7 @@ document.addEventListener("click", async (ev) => {
       break;
     }
     case "set-compound-years": {
+      if (!isPro(settings(), state.user)) { openProDialog(); break; }
       const y = Number(el.dataset.years) || 10;
       state.compound = state.compound || {};
       state.compound.years = y;
@@ -3915,15 +4110,70 @@ document.addEventListener("click", async (ev) => {
       break;
     }
     case "export-expenses-csv": {
+      if (!isPro(settings(), state.user)) { openProDialog(); break; }
       const csv = generateExpensesCSV(state.expenses);
       const safeFamily = (settings().familyName || "PiggyNest").replace(/[^a-zA-Z0-9_-]/g, "_");
       downloadCsvFile(csv, `${safeFamily}-Expenses.csv`);
       break;
     }
     case "export-investments-csv": {
+      if (!isPro(settings(), state.user)) { openProDialog(); break; }
       const csv = generateInvestmentsCSV(state.investments);
       const safeFamily = (settings().familyName || "PiggyNest").replace(/[^a-zA-Z0-9_-]/g, "_");
       downloadCsvFile(csv, `${safeFamily}-Investments.csv`);
+      break;
+    }
+    case "select-pro-plan": {
+      const plan = el.dataset.plan;
+      $$(".pro-tier-btn").forEach((btn) => btn.classList.toggle("active", btn.dataset.plan === plan));
+      break;
+    }
+    case "activate-pro-trial": {
+      const until = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+      await state.db.saveProStatus(true, until, null, true);
+      if (state.settings) {
+        state.settings.pro = true;
+        state.settings.proUntil = until;
+      }
+      $("#settingsDialog")?.close();
+      triggerConfetti();
+      toast("🎉 Welcome to Piggy Pro! 7-day free trial activated ✨");
+      render();
+      break;
+    }
+    case "activate-pro-demo": {
+      await state.db.saveProStatus(true, null, null, false);
+      if (state.settings) {
+        state.settings.pro = true;
+        state.settings.proUntil = null;
+      }
+      $("#settingsDialog")?.close();
+      triggerConfetti();
+      toast("👑 Piggy Pro Lifetime activated! All features unlocked ✨");
+      render();
+      break;
+    }
+    case "toggle-pro-demo": {
+      const currentlyPro = isPro(settings(), state.user);
+      if (currentlyPro) {
+        await state.db.cancelProSubscription();
+        if (state.settings) {
+          state.settings.pro = false;
+          state.settings.proUntil = null;
+          state.settings.subscriptionId = null;
+        }
+        toast("Piggy Pro disabled (Free Mode)");
+      } else {
+        await state.db.saveProStatus(true, null, null, false);
+        if (state.settings) {
+          state.settings.pro = true;
+          state.settings.proUntil = null;
+        }
+        triggerConfetti();
+        toast("🎉 Piggy Pro activated! ✨");
+      }
+      render();
+      if ($("#settingsDialog")?.open) openSettings();
       break;
     }
     case "open-wrapped": openWrappedStory(); break;
