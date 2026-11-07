@@ -732,8 +732,27 @@ function yearOptions() {
 function shellHtml() {
   const s = settings();
   const showMonth = state.tab === "home" || state.tab === "expenses";
+  const unverified = state.user && state.user.email !== "demo" && state.user.emailVerified === false;
+  const verifyBanner = unverified
+    ? `
+      <div class="verify-email-banner">
+        <div class="verify-email-text">
+          <span>✉️</span>
+          <div>
+            <b>Please verify your email address</b>
+            <p>Verification link sent to <b>${esc(state.user.email)}</b>. Check your inbox to activate full cloud sync.</p>
+          </div>
+        </div>
+        <div class="verify-email-actions">
+          <button type="button" class="btn btn-soft sm" data-act="check-email-verified">I've verified</button>
+          <button type="button" class="btn btn-ghost sm" data-act="resend-verification">Resend email</button>
+        </div>
+      </div>`
+    : "";
+
   return `
     ${state.db.mode === "local" ? `<div class="demo-bar">🧸 Demo mode: your data stays in this browser. Add your Firebase config to sync across devices.</div>` : ""}
+    ${verifyBanner}
     <header class="topbar">
       <div class="brand">
         <span class="brand-pig">${esc(getMascot(s.mascot).emoji)}</span>
@@ -3340,9 +3359,15 @@ async function doAuth(kind) {
   const err = $("#authErr");
   err.textContent = "";
   if (!f.reportValidity()) return;
+  const email = f.email.value.trim();
+  const password = f.password.value;
   try {
-    if (kind === "signup") await state.db.signUp(f.email.value.trim(), f.password.value);
-    else await state.db.signIn(f.email.value.trim(), f.password.value);
+    if (kind === "signup") {
+      await state.db.signUp(email, password);
+      toast(`✉️ Verification email sent to ${email}! Please check your inbox.`);
+    } else {
+      await state.db.signIn(email, password);
+    }
   } catch (e) {
     err.textContent = authMessage(e);
   }
@@ -3797,9 +3822,11 @@ function openProDialog() {
       </div>
 
       <div class="pro-code-section">
-        <small class="pro-code-label">Have an activation or promo code?</small>
-        <form id="proCodeForm" class="pro-code-form" autocomplete="off">
-          <input type="text" id="proCodeInput" placeholder="Enter activation code" maxlength="30" tabindex="-1">
+        <button type="button" class="btn btn-ghost sm" id="toggleProCodeBtn" data-act="toggle-pro-code" style="font-size:0.82rem;color:var(--ink-soft);padding:4px 8px;">
+          Have an activation code? ▾
+        </button>
+        <form id="proCodeForm" class="pro-code-form" autocomplete="off" style="display:none;margin-top:8px;">
+          <input type="text" id="proCodeInput" placeholder="Enter activation code" maxlength="30">
           <button type="submit" class="btn btn-soft sm" id="btnActivateProCode">Activate</button>
         </form>
       </div>
@@ -3812,9 +3839,15 @@ function openProDialog() {
   if (!dlg.open) dlg.showModal();
 
   dlg.scrollTop = 0;
+  if (typeof dlg.scrollTo === "function") dlg.scrollTo({ top: 0, behavior: "instant" });
   const body = dlg.querySelector(".dlg-body");
-  if (body) body.scrollTop = 0;
-  if (document.activeElement && document.activeElement.tagName === "INPUT") {
+  if (body) {
+    body.scrollTop = 0;
+    if (typeof body.scrollTo === "function") body.scrollTo({ top: 0, behavior: "instant" });
+  }
+  const topClose = $("#closeProTopBtn", dlg);
+  if (topClose) topClose.focus();
+  else if (document.activeElement && document.activeElement.tagName === "INPUT") {
     document.activeElement.blur();
   }
   requestAnimationFrame(() => {
@@ -4298,6 +4331,52 @@ document.addEventListener("click", async (ev) => {
     case "export-json": exportJson(); break;
     case "restore-json-btn": $("#restoreJsonFile")?.click(); break;
     case "signout": await state.db.signOut(); break;
+    case "toggle-pro-code": {
+      const form = $("#proCodeForm");
+      const btn = $("#toggleProCodeBtn");
+      if (form) {
+        const isHidden = form.style.display === "none";
+        form.style.display = isHidden ? "flex" : "none";
+        if (btn) btn.textContent = isHidden ? "Hide activation code ▲" : "Have an activation code? ▾";
+        if (isHidden) {
+          const input = $("#proCodeInput");
+          if (input) input.focus();
+        }
+      }
+      break;
+    }
+    case "resend-verification": {
+      try {
+        if (state.db.sendVerificationEmail) {
+          await state.db.sendVerificationEmail();
+          toast(`✉️ Verification email resent to ${state.user?.email || "your inbox"}!`);
+        } else {
+          toast("Verification email sent");
+        }
+      } catch (err) {
+        toast("Could not resend email: " + (err.message || err));
+      }
+      break;
+    }
+    case "check-email-verified": {
+      try {
+        if (state.db.reloadUser) {
+          const u = await state.db.reloadUser();
+          if (u && u.emailVerified) {
+            if (state.user) state.user.emailVerified = true;
+            toast("🎉 Email verified! Welcome to PiggyNest.");
+            render();
+          } else {
+            toast("Email not verified yet. Please check your inbox and click the link!");
+          }
+        } else {
+          toast("Checking verification…");
+        }
+      } catch (err) {
+        toast("Error checking verification: " + (err.message || err));
+      }
+      break;
+    }
     case "signup": doAuth("signup"); break;
     case "forgot": {
       const email = $("#authForm").email.value.trim();

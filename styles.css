@@ -3158,3 +3158,55 @@ body { background: var(--bg); background-attachment: scroll; }
   font-size: 1.4rem;
   animation: confetti-burst 2.2s cubic-bezier(0.25, 1, 0.5, 1) forwards;
 }
+
+/* ================================================================== */
+/* Email Verification Banner                                           */
+/* ================================================================== */
+.verify-email-banner {
+  background: linear-gradient(135deg, rgba(255, 240, 245, 0.96) 0%, rgba(255, 248, 230, 0.96) 100%);
+  border-bottom: 1.5px solid rgba(255, 143, 177, 0.35);
+  padding: 10px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  animation: fadeIn 0.25s ease-out;
+}
+
+[data-theme="mocha"] .verify-email-banner,
+[data-theme="dark"] .verify-email-banner {
+  background: linear-gradient(135deg, rgba(45, 30, 40, 0.96) 0%, rgba(40, 32, 28, 0.96) 100%);
+  border-bottom-color: rgba(255, 143, 177, 0.25);
+}
+
+.verify-email-text {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.88rem;
+}
+
+.verify-email-text span {
+  font-size: 1.3rem;
+  line-height: 1;
+}
+
+.verify-email-text b {
+  color: var(--ink);
+  display: block;
+  font-size: 0.9rem;
+}
+
+.verify-email-text p {
+  margin: 2px 0 0;
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+}
+
+.verify-email-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}

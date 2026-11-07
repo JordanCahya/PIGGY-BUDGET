@@ -103,11 +103,46 @@ async function createFirebaseDb() {
     onAuth(cb) {
       return authMod.onAuthStateChanged(auth, (user) => {
         uid = user ? user.uid : null;
-        cb(user ? { email: user.email } : null);
+        cb(
+          user
+            ? {
+                email: user.email,
+                emailVerified: Boolean(user.emailVerified),
+                uid: user.uid,
+              }
+            : null
+        );
       });
     },
     signIn: (email, password) => authMod.signInWithEmailAndPassword(auth, email, password),
-    signUp: (email, password) => authMod.createUserWithEmailAndPassword(auth, email, password),
+    async signUp(email, password) {
+      const cred = await authMod.createUserWithEmailAndPassword(auth, email, password);
+      if (cred && cred.user && typeof authMod.sendEmailVerification === "function") {
+        try {
+          await authMod.sendEmailVerification(cred.user);
+        } catch (err) {
+          console.warn("Could not send email verification:", err);
+        }
+      }
+      return cred;
+    },
+    sendVerificationEmail: () => {
+      if (auth.currentUser && typeof authMod.sendEmailVerification === "function") {
+        return authMod.sendEmailVerification(auth.currentUser);
+      }
+      return Promise.reject(new Error("No signed-in user"));
+    },
+    reloadUser: async () => {
+      if (auth.currentUser) {
+        if (typeof authMod.reload === "function") {
+          await authMod.reload(auth.currentUser);
+        } else if (typeof auth.currentUser.reload === "function") {
+          await auth.currentUser.reload();
+        }
+        return auth.currentUser;
+      }
+      return null;
+    },
     resetPassword: (email) => authMod.sendPasswordResetEmail(auth, email),
     signOut: () => authMod.signOut(auth),
 
@@ -267,11 +302,13 @@ function createLocalDb() {
     mode: "local",
 
     onAuth(cb) {
-      setTimeout(() => cb({ email: "demo" }), 0);
+      setTimeout(() => cb({ email: "demo", emailVerified: true, uid: "demo" }), 0);
       return () => {};
     },
     async signIn() {},
     async signUp() {},
+    sendVerificationEmail: async () => {},
+    reloadUser: async () => ({ email: "demo", emailVerified: true, uid: "demo" }),
     async resetPassword() {},
     async signOut() {},
 
